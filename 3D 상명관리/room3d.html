@@ -1,17 +1,21 @@
 <!doctype html>
-<!-- 전산실 3D 상면 화면 — 폐쇄망용 Three.js 사본(vendor/three)으로 랙·항온항습기를 세우고 시점을 쉽게 고르게 한다 -->
+<!-- 전산실 3D 상면 — 보기(시점 조절)와 편집(포토샵식 배치 편집기)을 한 화면에서 한다. 폐쇄망용 Three.js 사본(vendor/three)을 쓴다 -->
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>전산실 3D 상면</title>
 <style>
-  :root{ --ink:#1c2126; --sub:#5b6672; --line:#d3d8de; --panel:#ffffffee; --brand:#009bde; }
+  :root{ --ink:#1c2126; --sub:#5b6672; --line:#d3d8de; --panel:#ffffffee; --brand:#009bde;
+         --e-bg:#26292e; --e-pn:#31353b; --e-pn2:#3a3f46; --e-line:#4a5059; --e-ink:#e4e7eb; --e-sub:#a3abb5; --e-hi:#0b84c6; }
   html,body{margin:0;height:100%;overflow:hidden;background:#fff;
     font:13px/1.55 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;color:var(--ink)}
-  #cv{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+  #stage{position:fixed;inset:0}
+  #cv,#ov{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #cv{cursor:grab;touch-action:none}
   #cv.over{cursor:pointer}
   #cv.drag{cursor:grabbing}
+  #ov{pointer-events:none}
   .panel{position:fixed;background:var(--panel);border:1px solid var(--line);
     border-radius:9px;padding:12px 14px;box-shadow:0 3px 18px #0001}
   #ui{top:14px;left:14px;width:226px}
@@ -22,13 +26,15 @@
   #ui .sub{margin-bottom:9px}
   #ui label{display:flex;align-items:center;gap:7px;padding:2px 0;cursor:pointer}
   #ui hr{border:0;border-top:1px solid var(--line);margin:9px 0}
-  .sw{width:12px;height:12px;border-radius:2px;border:1px solid #0003}
+  .sw{width:12px;height:12px;border-radius:2px;border:1px solid #0003;flex:none}
   .row{display:flex;gap:6px;flex-wrap:wrap}
   button{font:inherit;padding:3px 9px;border:1px solid var(--line);
-    background:#fff;border-radius:6px;cursor:pointer}
+    background:#fff;border-radius:6px;cursor:pointer;color:inherit}
   button:hover{background:#f3f5f7}
   #find{font:inherit;width:100%;box-sizing:border-box;padding:4px 8px;
     border:1px solid var(--line);border-radius:6px;margin-top:9px}
+  #toEdit{width:100%;margin-top:9px;background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  #toEdit:hover{background:#0889c4}
   #info b{font-size:13px}
   #info .k{color:var(--sub);display:inline-block;min-width:52px}
   #map .t{font-weight:600;font-size:12px;margin-bottom:5px}
@@ -36,6 +42,93 @@
   #mini{display:block;cursor:crosshair;border:1px solid var(--line);border-radius:5px;
     background:#fff;touch-action:none}
   #help{color:var(--sub);font-size:11px;line-height:1.6;margin-top:6px}
+  #gauge{top:14px;right:14px;width:336px;padding:10px 12px}
+  #gauge .hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  #gauge .hd b{font-size:13px}
+  #gauge select{font:inherit;font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:6px}
+  #gauge.접힘 .몸{display:none}
+  .g{display:grid;grid-template-columns:58px 24px 1fr 24px 78px;align-items:center;gap:4px;margin-top:6px}
+  .g .이름{font-size:12px;font-weight:600;white-space:nowrap}
+  .g .이름 i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:0}
+  .g button{padding:0;height:22px;font-size:11px;line-height:1;user-select:none;touch-action:none}
+  .g input[type=range]{width:100%;margin:0;accent-color:var(--brand)}
+  .g label{display:flex;align-items:center;gap:2px;font-size:11px;color:var(--sub)}
+  .g input[type=number]{font:inherit;font-size:12px;width:58px;padding:1px 3px;
+    border:1px solid var(--line);border-radius:5px;text-align:right}
+  #gauge .sub{margin-top:7px}
+
+  /* ── 편집 모드 — 포토샵처럼 어두운 판, 위 메뉴·옵션 막대, 왼쪽 도구, 오른쪽 패널, 아래 상태줄 ── */
+  .편집만{display:none}
+  body.편집 .보기만{display:none!important}
+  body.편집{background:var(--e-bg);color:var(--e-ink)}
+  body.편집 #stage{top:64px;left:44px;right:304px;bottom:24px;background:#1c1f23}
+  body.편집 #cv{cursor:default}
+  body.편집 .편집만{display:flex}
+  .e{position:fixed;background:var(--e-pn);color:var(--e-ink);font-size:12px;box-sizing:border-box}
+  .e button{background:var(--e-pn2);border:1px solid var(--e-line);color:var(--e-ink);border-radius:4px;padding:2px 8px;font-size:12px}
+  .e button:hover{background:#454b53}
+  .e button.켬{background:var(--e-hi);border-color:var(--e-hi);color:#fff}
+  .e input,.e select,.e textarea{font:inherit;font-size:12px;background:#24272b;color:var(--e-ink);
+    border:1px solid var(--e-line);border-radius:4px;padding:2px 5px;box-sizing:border-box}
+  .e input[type=number]{width:74px;text-align:right}
+  #menubar{top:0;left:0;right:0;height:28px;align-items:center;gap:2px;padding:0 8px;border-bottom:1px solid #1c1f23}
+  #menubar .제목{font-weight:700;margin-right:10px;color:#fff}
+  .메뉴{position:relative}
+  .메뉴>button{background:transparent;border:0;padding:3px 9px}
+  .메뉴.열림>button{background:var(--e-hi);color:#fff}
+  .메뉴 .아래{display:none;position:absolute;top:26px;left:0;min-width:236px;background:var(--e-pn2);
+    border:1px solid var(--e-line);border-radius:5px;box-shadow:0 6px 20px #0007;padding:4px 0;z-index:30}
+  .메뉴.열림 .아래{display:block}
+  .아래 div.항{display:flex;justify-content:space-between;gap:18px;padding:4px 14px;cursor:pointer;white-space:nowrap}
+  .아래 div.항:hover{background:var(--e-hi);color:#fff}
+  .아래 div.항 kbd{color:var(--e-sub);font:inherit;font-size:11px}
+  .아래 div.항:hover kbd{color:#dff1fb}
+  .아래 hr{border:0;border-top:1px solid var(--e-line);margin:4px 0}
+  #menubar .오른{margin-left:auto;display:flex;gap:8px;align-items:center}
+  #saveState{color:var(--e-sub)}
+  #optbar{top:28px;left:0;right:0;height:36px;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid #1c1f23;white-space:nowrap;overflow:hidden}
+  #optbar .도구이름{font-weight:700;min-width:84px}
+  #optbar label{display:flex;align-items:center;gap:3px;color:var(--e-sub)}
+  #optbar .칸{width:1px;height:20px;background:var(--e-line);margin:0 4px}
+  #tools{top:64px;left:0;width:44px;bottom:24px;flex-direction:column;align-items:center;gap:3px;padding-top:6px;border-right:1px solid #1c1f23}
+  #tools button{width:34px;height:32px;padding:0;font-size:16px;line-height:1}
+  #tools .칸{height:1px;width:28px;background:var(--e-line);margin:4px 0}
+  #tools .작{font-size:11px;height:24px}
+  #panels{top:64px;right:0;width:304px;bottom:24px;flex-direction:column;overflow-y:auto;border-left:1px solid #1c1f23}
+  .판{border-bottom:1px solid #1c1f23}
+  .판>h3{margin:0;font-size:12px;font-weight:700;padding:6px 10px;background:var(--e-pn2);cursor:pointer;user-select:none;display:flex;justify-content:space-between}
+  .판>h3 span{color:var(--e-sub);font-weight:400}
+  .판.접힘>.안{display:none}
+  .판>.안{padding:8px 10px}
+  #lib{max-height:300px;overflow-y:auto}
+  .묶음이름{color:var(--e-sub);font-size:11px;margin:6px 0 4px}
+  .타일들{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+  .타일{display:flex;gap:6px;align-items:center;background:#2a2e33;border:1px solid var(--e-line);border-radius:4px;
+    padding:4px 5px;cursor:grab;user-select:none;min-width:0}
+  .타일:hover{border-color:var(--e-hi)}
+  .타일.켬{border-color:var(--e-hi);background:#183b50}
+  .타일 .견{width:22px;height:22px;border-radius:3px;flex:none;display:grid;place-items:center;font-size:10px;font-weight:700;color:#fff;border:1px solid #0006}
+  .타일 .글{min-width:0;line-height:1.25}
+  .타일 .글 b{display:block;font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .타일 .글 span{font-size:10px;color:var(--e-sub)}
+  .층{display:flex;align-items:center;gap:4px;padding:3px 2px;border-bottom:1px solid #2a2e33}
+  .층 button{padding:0 4px;height:20px;min-width:24px;font-size:11px}
+  .층 .이{flex:1;cursor:pointer}
+  .층 .수{color:var(--e-sub)}
+  .층목록{max-height:220px;overflow-y:auto;margin:2px 0 4px 26px}
+  .층목록 div{padding:1px 6px;cursor:pointer;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .층목록 div:hover{background:#3a3f46}
+  .층목록 div.켬{background:var(--e-hi);color:#fff}
+  .속{display:grid;grid-template-columns:86px 1fr;gap:5px 6px;align-items:center}
+  .속 span{color:var(--e-sub)}
+  .속 input,.속 textarea{width:100%}
+  .내역 div{padding:2px 6px;cursor:pointer;border-radius:3px}
+  .내역 div:hover{background:#3a3f46}
+  .내역 div.지금{background:var(--e-hi);color:#fff}
+  .내역 div.뒤{color:#717a85}
+  #status{left:0;right:0;bottom:0;height:24px;align-items:center;gap:16px;padding:0 10px;border-top:1px solid #1c1f23;color:var(--e-sub)}
+  #status b{color:var(--e-ink);font-weight:600}
+  #status .말{margin-left:auto;color:#ffd166}
 </style>
 <script type="importmap">
 {"imports":{"three":"./vendor/three/three.module.min.js",
@@ -43,16 +136,13 @@
 </script>
 </head>
 <body>
-<canvas id="cv"></canvas>
+<div id="stage"><canvas id="cv"></canvas><canvas id="ov"></canvas></div>
 
-<div id="ui" class="panel">
+<!-- ── 보기 모드 ── -->
+<div id="ui" class="panel 보기만">
   <h1>전산실 3D 상면</h1>
-  <div class="sub">평면도에서 뽑은 좌표 · 바닥타일 600 mm</div>
-  <label><input type="checkbox" id="t_rack" checked><span class="sw" style="background:#4b525c"></span>랙 <span id="n_rack"></span></label>
-  <label><input type="checkbox" id="t_ac" checked><span class="sw" style="background:#e9ecef"></span>항온항습기 <span id="n_ac"></span></label>
-  <label><input type="checkbox" id="t_col" checked><span class="sw" style="background:#23262b"></span>기둥 <span id="n_col"></span></label>
-  <label><input type="checkbox" id="t_wall" checked><span class="sw" style="background:#f2f3f5"></span>벽</label>
-  <label><input type="checkbox" id="t_floor" checked><span class="sw" style="background:#e7e9eb"></span>바닥 · 타일선</label>
+  <div class="sub" id="source">평면도에서 뽑은 좌표 · 바닥타일 600 mm</div>
+  <div id="layerChecks"></div>
   <hr>
   <div class="row">
     <button id="v_iso">비스듬히</button>
@@ -61,11 +151,23 @@
   </div>
   <label style="margin-top:7px"><input type="checkbox" id="t_wallhi">벽을 전체 높이로 (3.6 m)</label>
   <input id="find" placeholder="찾기 — 랙 R123 · 열 C1 · AC05" autocomplete="off">
+  <button id="toEdit">배치 편집 ✎</button>
 </div>
 
-<div id="info" class="panel"><b>객체를 누르면 정보가 나옵니다</b></div>
+<div id="info" class="panel 보기만"><b>객체를 누르면 정보가 나옵니다</b></div>
 
-<div id="map" class="panel">
+<div id="gauge" class="panel 보기만">
+  <div class="hd"><b>시점 조절</b>
+    <span><select id="g_step" title="◀ ▶ 한 번에 움직이는 양">
+      <option value="0.1">아주 섬세 · 1 cm · 0.1°</option>
+      <option value="1" selected>섬세 · 10 cm · 1°</option>
+      <option value="10">크게 · 1 m · 10°</option>
+    </select> <button id="g_fold" title="접기·펴기">접기</button></span></div>
+  <div class="몸" id="g_rows"></div>
+  <div class="몸 sub">◀ ▶ 를 누르고 있으면 계속 움직입니다. 막대를 누른 뒤 키보드 ← → 로도 한 칸씩 움직입니다. 숫자 칸에 바로 적어도 됩니다.</div>
+</div>
+
+<div id="map" class="panel 보기만">
   <div class="t">평면에서 위치 고르기 <span>누르거나 끌면 그곳을 봅니다</span></div>
   <canvas id="mini"></canvas>
   <div id="help">왼쪽 끌기 = 회전 · 오른쪽(가운데·Shift) 끌기 = 이동<br>
@@ -73,51 +175,176 @@
     방향키·WASD = 이동 · Q/E = 회전 · +/− = 확대 · F = 고른 것 · Home = 전체</div>
 </div>
 
+<!-- ── 편집 모드 (포토샵 배치) ── -->
+<div id="menubar" class="e 편집만">
+  <span class="제목">배치 편집</span>
+  <span id="menus" style="display:flex"></span>
+  <span class="오른"><span id="saveState"></span><button id="toView">편집 끝내고 보기 ▶</button></span>
+</div>
+<div id="optbar" class="e 편집만"></div>
+<div id="tools" class="e 편집만"></div>
+<div id="panels" class="e 편집만">
+  <div class="판" id="p_lib"><h3>장비 <span>끌어 놓거나 누른 뒤 자리를 누릅니다</span></h3><div class="안" id="lib"></div></div>
+  <div class="판" id="p_layer"><h3>레이어 <span>보임 · 잠금</span></h3><div class="안" id="layers"></div></div>
+  <div class="판" id="p_prop"><h3>속성</h3><div class="안" id="props"></div></div>
+  <div class="판" id="p_hist"><h3>작업 내역 <span>누르면 그때로 돌아갑니다</span></h3><div class="안 내역" id="hist"></div></div>
+</div>
+<div id="status" class="e 편집만"></div>
+<input type="file" id="fileIn" accept=".json,application/json" hidden>
+
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const $ = (id) => document.getElementById(id);
-
+/* 요소 만들기 — 글은 textContent 로만 넣는다 (innerHTML 을 쓰지 않는다) */
+function 엘(tag, 속 = {}, ...안) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(속)) {
+    if (v == null) continue;
+    if (k === "class") e.className = v;
+    else if (k === "style") e.style.cssText = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k in e) e[k] = v;
+    else e.setAttribute(k, v);
+  }
+  for (const k of 안) if (k != null && k !== false) e.append(k);
+  return e;
+}
 function 알림(제목, 글) {
   const el = $("info");
-  el.replaceChildren();
-  const b = document.createElement("b"); b.textContent = 제목; el.append(b);
-  if (글) { const d = document.createElement("div"); d.className = "sub"; d.textContent = 글; el.append(d); }
+  el.replaceChildren(엘("b", {textContent: 제목}));
+  if (글) el.append(엘("div", {class: "sub", textContent: 글}));
 }
 
-/* ── 장면 자료 ─────────────────────────────────────────────────────
-   rack [id, 열, x, y, w, d, h] · ac·col [id, x, y, w, d, h]
-   wall [x, y, w, d, h] · floor [x, y, w, d]          단위는 전부 m
-   평면 좌표 (x 오른쪽, y 아래, z 위) 를 Three.js 의 (x, z, y) 로 옮긴다. */
-let S;
+/* ── 장비 목록 — 편집기 라이브러리에 미리 만들어 둔 기본 장비 ─────────────────
+   크기 단위는 m, z0 는 바닥에서 띄운 높이. 모양이 없으면 상자. */
+const 분류목록 = [
+  {키: "랙", 이름: "랙", 견: "#4a515c"},
+  {키: "공조", 이름: "공조", 견: "#e9ecef"},
+  {키: "전력", 이름: "전력", 견: "#c9cfd6"},
+  {키: "센서", 이름: "센서", 견: "#ef4444"},
+  {키: "건축", 이름: "건축 (벽·기둥·문)", 견: "#f2f3f5"},
+  {키: "바닥", 이름: "바닥", 견: "#e7e9eb"},
+];
+const 장비 = {
+  rack:        {이름: "서버 랙 42U",            분류: "랙",   w: .6,  d: 1.0, h: 2.0,  색: 0x4a515c, 접두: "R",   모양: "랙"},
+  rack_deep:   {이름: "서버 랙 42U 깊이 1200",  분류: "랙",   w: .6,  d: 1.2, h: 2.0,  색: 0x4a515c, 접두: "R",   모양: "랙"},
+  rack_net:    {이름: "네트워크 랙 42U",        분류: "랙",   w: .8,  d: 1.0, h: 2.0,  색: 0x3d5a73, 접두: "N",   모양: "랙"},
+  crac:        {이름: "항온항습기",             분류: "공조", w: 2.6, d: .9,  h: 2.0,  색: 0xf2f4f7, 접두: "AC"},
+  inrow:       {이름: "인로우 냉방기",          분류: "공조", w: .3,  d: 1.2, h: 2.0,  색: 0xe3e8ed, 접두: "IR"},
+  ac_stand:    {이름: "스탠드 에어컨",          분류: "공조", w: .6,  d: .4,  h: 1.85, 색: 0xf7f8fa, 접두: "SA"},
+  ac_ceiling:  {이름: "천장형 에어컨",          분류: "공조", w: .84, d: .84, h: .3,   z0: 2.7, 색: 0xeef1f4, 접두: "CA"},
+  ac_wall:     {이름: "벽걸이 에어컨",          분류: "공조", w: .9,  d: .25, h: .3,   z0: 2.2, 색: 0xf7f8fa, 접두: "WA"},
+  airflow:     {이름: "기류(플로우) 화살표",    분류: "공조", w: 1.2, d: .6,  h: .02,  z0: .01, 색: 0x38bdf8, 접두: "AF", 모양: "화살표", 그림자: false},
+  ups:         {이름: "UPS",                    분류: "전력", w: 1.2, d: .8,  h: 1.95, 색: 0xd9dde2, 접두: "UPS"},
+  battery:     {이름: "배터리 랙",              분류: "전력", w: 1.5, d: .75, h: 1.8,  색: 0x8f99a4, 접두: "BT"},
+  panel:       {이름: "분전반",                 분류: "전력", w: .8,  d: .4,  h: 1.8,  색: 0xc9cfd6, 접두: "PNL"},
+  s_temp:      {이름: "온도 센서",              분류: "센서", w: .06, d: .03, h: .1,  z0: 1.5, 색: 0xef4444, 접두: "T",   글자: "온"},
+  s_humi:      {이름: "습도 센서",              분류: "센서", w: .06, d: .03, h: .1,  z0: 1.5, 색: 0x0ea5e9, 접두: "H",   글자: "습"},
+  s_th:        {이름: "온습도 센서",            분류: "센서", w: .08, d: .03, h: .12, z0: 1.5, 색: 0xf97316, 접두: "TH",  글자: "온습"},
+  s_leak_line: {이름: "누수 감지선",            분류: "센서", w: 3.0, d: .03, h: .01, z0: 0,   색: 0x2563eb, 접두: "LL",  글자: "수", 그림자: false},
+  s_leak:      {이름: "누수 감지기 (점형)",     분류: "센서", w: .08, d: .08, h: .03, z0: 0,   색: 0x2563eb, 접두: "LP",  글자: "수"},
+  s_smoke:     {이름: "연기 감지기",            분류: "센서", w: .12, d: .12, h: .05, z0: 3.3, 색: 0x9ca3af, 접두: "SM",  글자: "연", 모양: "원판"},
+  s_heat:      {이름: "열 감지기",              분류: "센서", w: .12, d: .12, h: .05, z0: 3.3, 색: 0xdc2626, 접두: "HT",  글자: "열", 모양: "원판"},
+  s_door:      {이름: "출입문 센서",            분류: "센서", w: .05, d: .03, h: .1,  z0: 2.0, 색: 0xa855f7, 접두: "DS",  글자: "문"},
+  s_power:     {이름: "전력 미터",              분류: "센서", w: .1,  d: .06, h: .15, z0: 1.2, 색: 0xeab308, 접두: "PM",  글자: "전"},
+  s_vib:       {이름: "진동 센서",              분류: "센서", w: .05, d: .05, h: .04, z0: 1.0, 색: 0x10b981, 접두: "VB",  글자: "진"},
+  s_dp:        {이름: "차압 센서",              분류: "센서", w: .1,  d: .05, h: .1,  z0: 1.8, 색: 0x14b8a6, 접두: "DP",  글자: "압"},
+  s_wind:      {이름: "풍속 센서",              분류: "센서", w: .05, d: .05, h: .15, z0: .3,  색: 0x06b6d4, 접두: "WS",  글자: "풍"},
+  s_cctv:      {이름: "CCTV 카메라",            분류: "센서", w: .12, d: .2,  h: .12, z0: 3.2, 색: 0x374151, 접두: "CAM", 글자: "캠"},
+  wall:        {이름: "벽",                     분류: "건축", w: 2.4, d: .2,  h: 3.6,  색: 0xf9fafb, 접두: "W"},
+  col:         {이름: "기둥",                   분류: "건축", w: 1.0, d: 1.0, h: 3.6,  색: 0x262a30, 접두: "C"},
+  door:        {이름: "출입문",                 분류: "건축", w: 1.0, d: .1,  h: 2.1,  색: 0xb08d64, 접두: "D"},
+  floor:       {이름: "바닥 (이중마루) 구역",   분류: "바닥", w: 2.4, d: 2.4, h: .15,  z0: -.15, 색: 0xe8eaec, 접두: "F", 그림자: false},
+};
+const 색글 = (n) => "#" + n.toString(16).padStart(6, "0");
+const 어두운가 = (n) => (((n >> 16) & 255) * .3 + ((n >> 8) & 255) * .59 + (n & 255) * .11) < 128;
+
+/* ── 도면 모형 (2판) ───────────────────────────────────────────────────
+   항목 {id, 종류, 이름, x, y(가운데), w, d, h, z0, 회전(도, 위에서 봐서 시계 방향), 열, 점(FMS 센서 코드), 메모}
+   평면 좌표는 x 오른쪽, y 아래(평면도 그림과 같은 방향), z 위. Three.js 에는 (x, z, y) 로 놓는다. */
+const 저장열쇠 = "fms.room3d.layout.v2";
+const 깊은복사 = (v) => JSON.parse(JSON.stringify(v));
+function 옛도면바꾸기(S) {
+  if (S.판 === 2) return S;
+  const 항목 = [], 번 = (n, k) => String(n).padStart(k, "0");
+  const 넣기 = (종류, id, x, y, w, d, h, 더) => 항목.push({id, 종류, 이름: 장비[종류].이름,
+    x: +(x + w / 2).toFixed(4), y: +(y + d / 2).toFixed(4), w, d, h, z0: 장비[종류].z0 || 0, 회전: 0, ...더});
+  S.rack.forEach(r => 넣기("rack", r[0], r[2], r[3], r[4], r[5], r[6], {열: r[1]}));
+  S.ac.forEach(r => 넣기("crac", r[0], r[1], r[2], r[3], r[4], r[5]));
+  S.col.forEach(r => 넣기("col", r[0], r[1], r[2], r[3], r[4], r[5]));
+  S.wall.forEach((r, i) => 넣기("wall", "W" + 번(i + 1, 3), r[0], r[1], r[2], r[3], r[4]));
+  S.floor.forEach((r, i) => 넣기("floor", "F" + 번(i + 1, 3), r[0], r[1], r[2], r[3], .15));
+  return {판: 2, 방: {w: S.room[0], d: S.room[1], h: 3.6}, 항목};
+}
+function 저장본읽기() {
+  try { const t = localStorage.getItem(저장열쇠); return t ? JSON.parse(t) : null; } catch { return null; }
+}
+let 원본;
 try {
   const r = await fetch("room3d_scene.json", {cache: "no-cache"});
   if (!r.ok) throw new Error("HTTP " + r.status);
-  S = await r.json();
+  원본 = 옛도면바꾸기(await r.json());
 } catch (e) {
   알림("장면 자료를 읽지 못했습니다", "room3d_scene.json (" + e.message + ")");
   throw e;
 }
-const 방 = {w: S.room[0], d: S.room[1]};
+const 저장본 = 저장본읽기();
+let 모형 = 깊은복사(저장본 && 저장본.판 === 2 ? 저장본 : 원본);
+if (저장본) $("source").textContent = "브라우저에 저장된 배치" + (저장본.저장시각 ? " · " + 저장본.저장시각 : "");
+const 방 = () => 모형.방;
+const 찾기id = new Map();
+function 색인() { 찾기id.clear(); for (const it of 모형.항목) 찾기id.set(it.id, it); }
+색인();
+
+/* 평면 도형 계산 */
+const 라 = (deg) => deg * Math.PI / 180;
+function 모서리(it) {
+  const c = Math.cos(라(it.회전 || 0)), s = Math.sin(라(it.회전 || 0)), a = it.w / 2, b = it.d / 2;
+  return [[-a, -b], [a, -b], [a, b], [-a, b]].map(([lx, ly]) => [it.x + lx * c - ly * s, it.y + lx * s + ly * c]);
+}
+function 범위(it) {
+  const m = 모서리(it); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const [x, y] of m) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  return {x0, y0, x1, y1};
+}
+function 안쪽(it, px, py, 여유 = 0) {
+  const c = Math.cos(라(it.회전 || 0)), s = Math.sin(라(it.회전 || 0)), dx = px - it.x, dy = py - it.y;
+  const lx = dx * c + dy * s, ly = -dx * s + dy * c;
+  return Math.abs(lx) <= it.w / 2 + 여유 && Math.abs(ly) <= it.d / 2 + 여유;
+}
+const 각정리 = (v) => { v = ((v % 360) + 540) % 360 - 180; return Math.abs(v) < 1e-9 ? 0 : +v.toFixed(3); };
+const 둘째 = (v) => Math.round(v * 10000) / 10000;
+
+/* 층(레이어) — 바닥은 포토샵의 배경 레이어처럼 처음에 잠가 둔다 */
+const 층 = Object.fromEntries(분류목록.map(c => [c.키, {보임: true, 잠금: c.키 === "바닥"}]));
+const 분류 = (it) => (장비[it.종류] || 장비.rack).분류;
+const 보이나 = (it) => 층[분류(it)].보임;
+const 만질수있나 = (it) => 보이나(it) && !층[분류(it)].잠금;
+
+/* ── 3D 장면 ─────────────────────────────────────────────────────── */
+const stage = $("stage"), cv = $("cv"), ov = $("ov"), og = ov.getContext("2d");
+let W = 1, H = 1, DPR = 1;
 const V = (x, y, z) => new THREE.Vector3(x, z, y);
 
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({canvas: $("cv"), antialias: true});
+  renderer = new THREE.WebGLRenderer({canvas: cv, antialias: true});
 } catch (e) {
   알림("이 브라우저에서 3D 를 그릴 수 없습니다", "크롬이나 엣지 최신판으로 열어 주세요.");
   throw e;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;      // r185 에서 PCFSoft 는 없어졌다
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
 
-const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 600);
-const controls = new OrbitControls(camera, renderer.domElement);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 600);
+const 평면cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+평면cam.up.set(0, 0, -1);
+const controls = new OrbitControls(camera, cv);
 controls.enableDamping = true;
 controls.dampingFactor = 0.14;
 controls.zoomToCursor = true;            // 휠은 화면 가운데가 아니라 마우스 쪽으로 다가간다
@@ -127,185 +354,237 @@ controls.minDistance = 1.2;
 controls.maxDistance = 160;
 controls.mouseButtons = {LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN};
 
-/* ── 빛 ─────────────────────────────────────────────────────────── */
 scene.add(new THREE.HemisphereLight(0xffffff, 0xd9dee4, 2.0));
 const 해 = new THREE.DirectionalLight(0xffffff, 1.5);
-해.position.copy(V(방.w * 0.25, -방.d * 0.35, 30));
-해.target.position.copy(V(방.w / 2, 방.d / 2, 0));
 해.castShadow = true;
 해.shadow.mapSize.set(2048, 2048);
-Object.assign(해.shadow.camera, {left: -34, right: 34, top: 34, bottom: -34, near: 1, far: 90});
 해.shadow.bias = -0.0005;
 scene.add(해, 해.target);
+function 빛맞추기() {
+  const r = Math.max(방().w, 방().d) * 0.75 + 4;
+  해.position.copy(V(방().w * 0.25, -방().d * 0.35, 30));
+  해.target.position.copy(V(방().w / 2, 방().d / 2, 0));
+  Object.assign(해.shadow.camera, {left: -r, right: r, top: r, bottom: -r, near: 1, far: 120});
+  해.shadow.camera.updateProjectionMatrix();
+}
 
-/* ── 상자 묶음 — 종류마다 InstancedMesh 하나 (그리기 호출이 적다) ───── */
-const 재질정보 = {
-  rack : {rgb: 0x4a515c, 이름: "랙"},
-  ac   : {rgb: 0xf2f4f7, 이름: "항온항습기"},
-  col  : {rgb: 0x262a30, 이름: "기둥"},
-  wall : {rgb: 0xf9fafb, 이름: "벽"},
-  floor: {rgb: 0xe8eaec, 이름: "바닥"},
-};
-const 고름색 = new THREE.Color(0xd97706), 위색 = new THREE.Color(0xf59e0b);
-
-/* 랙 옆면 — 문틀과 U 단을 옅게 그린 그림을 씌운다. 밋밋한 상자와 랙을 눈으로 가른다. */
+/* 랙 옆면 — 문틀과 U 단을 옅게 그린 그림을 씌운다 */
 function 랙옆그림() {
   const c = document.createElement("canvas"); c.width = 64; c.height = 192;
   const g = c.getContext("2d");
   g.fillStyle = "#fff"; g.fillRect(0, 0, 64, 192);
-  g.strokeStyle = "rgba(0,0,0,.28)"; g.lineWidth = 2;
-  g.strokeRect(5, 5, 54, 182);
+  g.strokeStyle = "rgba(0,0,0,.28)"; g.lineWidth = 2; g.strokeRect(5, 5, 54, 182);
   g.lineWidth = 1;
   for (let i = 1; i < 6; i++) { g.beginPath(); g.moveTo(5, 5 + i * 182 / 6); g.lineTo(59, 5 + i * 182 / 6); g.stroke(); }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-
-function 묶음(종류, 목록, 그림자 = true) {
-  const 기본 = new THREE.Color(재질정보[종류].rgb);
-  let mat = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.85, metalness: 0});
-  if (종류 === "rack") {
-    const 옆 = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.8, map: 랙옆그림()});
-    mat = [옆, 옆, mat, mat, 옆, 옆];          // +x −x +y(윗면) −y +z −z
-  }
-  const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, 목록.length);
-  mesh.userData = {종류, 목록, 기본};
-  목록.forEach((b, i) => { mesh.setColorAt(i, 기본); });
-  mesh.castShadow = 그림자; mesh.receiveShadow = true;
-  자리놓기(mesh);
-  scene.add(mesh);
-  return mesh;
-}
-function 자리놓기(mesh) {
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion();
-  mesh.userData.목록.forEach((b, i) => {
-    m.compose(V(b.x + b.w / 2, b.y + b.d / 2, b.z0 + b.h / 2), q, new THREE.Vector3(b.w, b.h, b.d));
-    mesh.setMatrixAt(i, m);
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  mesh.computeBoundingBox(); mesh.computeBoundingSphere();
-}
-
-const 상자 = (id, 이름, x, y, w, d, z0, h) => ({id, 이름, x, y, w, d, z0, h});
-const 랙목록 = S.rack.map(r => 상자(r[0], "열 " + r[1], r[2], r[3], r[4], r[5], 0, r[6]));
-랙목록.forEach((b, i) => b.열 = S.rack[i][1]);
-const 묶 = {
-  rack : 묶음("rack", 랙목록),
-  ac   : 묶음("ac",  S.ac .map(r => 상자(r[0], "항온항습기", r[1], r[2], r[3], r[4], 0, r[5]))),
-  col  : 묶음("col", S.col.map(r => 상자(r[0], "구조 기둥",  r[1], r[2], r[3], r[4], 0, r[5]))),
-  /* 벽은 기본으로 허리 높이(1.2 m)로 자른다 — 3.6 m 로 세우면 칸막이벽이 랙을 통째로 가린다. */
-  wall : 묶음("wall", S.wall.map(r => 상자("", "벽", r[0], r[1], r[2], r[3], 0, 1.2))),
-  floor: 묶음("floor", S.floor.map(r => 상자("", "바닥", r[0], r[1], r[2], r[3], -0.15, 0.15)), false),
+const 랙옆 = 랙옆그림();
+const 도형 = {
+  상자: new THREE.BoxGeometry(1, 1, 1),
+  원판: new THREE.CylinderGeometry(.5, .5, 1, 28),
+  화살표: (() => {
+    const s = new THREE.Shape();
+    s.moveTo(-.5, -.18); s.lineTo(.12, -.18); s.lineTo(.12, -.5); s.lineTo(.5, 0);
+    s.lineTo(.12, .5); s.lineTo(.12, .18); s.lineTo(-.5, .18); s.closePath();
+    const g = new THREE.ExtrudeGeometry(s, {depth: 1, bevelEnabled: false});
+    g.rotateX(Math.PI / 2); g.translate(0, .5, 0);      // 모양의 y → 평면 y, 두께 → 높이
+    return g;
+  })(),
 };
-$("n_rack").textContent = S.rack.length + "대";
-$("n_ac").textContent = S.ac.length + "대";
-$("n_col").textContent = S.col.length + "개";
+const 재질칸 = new Map();
+function 재질(종류) {
+  if (재질칸.has(종류)) return 재질칸.get(종류);
+  const k = 장비[종류];
+  let m = new THREE.MeshStandardMaterial({color: k.색, roughness: .85, metalness: 0,
+    transparent: 종류 === "airflow", opacity: 종류 === "airflow" ? .6 : 1});
+  if (k.모양 === "랙") {
+    const 옆 = new THREE.MeshStandardMaterial({color: k.색, roughness: .8, map: 랙옆});
+    m = [옆, 옆, m, m, 옆, 옆];
+  }
+  재질칸.set(종류, m); return m;
+}
+const 고름재질 = new THREE.MeshStandardMaterial({color: 0xd97706, roughness: .7, emissive: 0x3a1a00});
+const 위재질 = new THREE.MeshStandardMaterial({color: 0xf59e0b, roughness: .7});
 
-/* 600 mm 타일선 — 바닥 조각 안에서만 긋는다 */
-const 타일 = (() => {
+let 벽자름 = true;
+const 매시들 = new Map();
+function 보이는높이(it) { return it.종류 === "wall" && 벽자름 ? Math.min(it.h, 1.2) : it.h; }
+function 매시맞추기(it) {
+  let m = 매시들.get(it.id);
+  const k = 장비[it.종류] || 장비.rack;
+  const 도 = k.모양 === "원판" ? 도형.원판 : k.모양 === "화살표" ? 도형.화살표 : 도형.상자;
+  if (!m || m.geometry !== 도) {
+    if (m) scene.remove(m);
+    m = new THREE.Mesh(도, 재질(it.종류));
+    m.castShadow = k.그림자 !== false; m.receiveShadow = true;
+    scene.add(m); 매시들.set(it.id, m);
+  }
+  const h = 보이는높이(it);
+  m.position.copy(V(it.x, it.y, (it.z0 || 0) + h / 2));
+  m.scale.set(Math.max(it.w, .005), Math.max(h, .005), Math.max(it.d, .005));
+  m.rotation.set(0, -라(it.회전 || 0), 0);
+  m.visible = 보이나(it);
+  m.userData.id = it.id;
+  return m;
+}
+
+/* 센서 표 — 작은 센서를 3D 에서도 찾게, 위에 동그란 글자표를 띄운다 */
+const 센서표그림 = new Map(), 센서표 = new Map();
+function 센서표재질(종류) {
+  if (센서표그림.has(종류)) return 센서표그림.get(종류);
+  const k = 장비[종류], c = document.createElement("canvas"); c.width = c.height = 64;
+  const g = c.getContext("2d");
+  g.fillStyle = 색글(k.색); g.beginPath(); g.arc(32, 32, 29, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = "#fff"; g.lineWidth = 4; g.stroke();
+  g.fillStyle = "#fff"; g.font = `bold ${k.글자.length > 1 ? 20 : 28}px 'Malgun Gothic', sans-serif`;
+  g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(k.글자, 32, 34);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.SpriteMaterial({map: t, depthTest: false});
+  센서표그림.set(종류, m); return m;
+}
+/* 열 이름표 · 600 mm 타일선 · 센서표를 모형에 맞춰 다시 만든다 */
+const 이름표 = [];
+let 타일 = null;
+function 덧붙이맞추기() {
+  for (const s of 이름표) { scene.remove(s); s.material.map.dispose(); s.material.dispose(); }
+  이름표.length = 0;
+  for (const e of 열목록().values()) {
+    const c = document.createElement("canvas"); c.width = 128; c.height = 64;
+    const g = c.getContext("2d");
+    g.fillStyle = "rgba(255,255,255,.92)"; g.strokeStyle = "rgba(28,33,38,.35)"; g.lineWidth = 3;
+    g.beginPath(); g.roundRect(4, 4, 120, 56, 12); g.fill(); g.stroke();
+    g.fillStyle = "#1c2126"; g.font = "bold 36px 'Malgun Gothic', sans-serif";
+    g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(e.이름, 64, 34);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({map: t, depthTest: false}));
+    const 짝 = e.이름.endsWith("2") ? 1 : -1;      // 두 줄짜리 열(B1·B2)은 이름표가 겹치므로 엇갈려 단다
+    s.position.copy(V((e.x0 + e.x1) / 2, 짝 < 0 ? e.y0 - 0.5 : e.y1 + 0.5, 2.4));
+    s.scale.set(1.1, 0.55, 1); s.renderOrder = 10; s.visible = 층.랙.보임;
+    scene.add(s); 이름표.push(s);
+  }
+  if (타일) { scene.remove(타일); 타일.geometry.dispose(); }
   const p = [];
-  for (const r of S.floor) {
-    const [x, y, w, d] = r;
-    for (let t = x + 0.6; t < x + w - 1e-6; t += 0.6) p.push(t, 0.003, y, t, 0.003, y + d);
-    for (let t = y + 0.6; t < y + d - 1e-6; t += 0.6) p.push(x, 0.003, t, x + w, 0.003, t);
+  for (const it of 모형.항목) {
+    if (it.종류 !== "floor" || (it.회전 || 0) % 90) continue;
+    const b = 범위(it);
+    for (let t = b.x0 + 0.6; t < b.x1 - 1e-6; t += 0.6) p.push(t, 0.003, b.y0, t, 0.003, b.y1);
+    for (let t = b.y0 + 0.6; t < b.y1 - 1e-6; t += 0.6) p.push(b.x0, 0.003, t, b.x1, 0.003, t);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
-  const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({color: 0x465262, transparent: true, opacity: 0.16}));
-  scene.add(l); return l;
-})();
-
-/* 열 이름표 — 랙 열 위에 띄워 어디를 보고 있는지 바로 알게 한다 */
-const 열들 = new Map();
-랙목록.forEach((b, i) => {
-  const e = 열들.get(b.열) || {이름: b.열, x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9, 번호: []};
-  e.x0 = Math.min(e.x0, b.x); e.y0 = Math.min(e.y0, b.y);
-  e.x1 = Math.max(e.x1, b.x + b.w); e.y1 = Math.max(e.y1, b.y + b.d);
-  e.번호.push(i); 열들.set(b.열, e);
-});
-const 이름표 = [];
-for (const e of 열들.values()) {
-  const c = document.createElement("canvas"); c.width = 128; c.height = 64;
-  const g = c.getContext("2d");
-  g.fillStyle = "rgba(255,255,255,.92)"; g.strokeStyle = "rgba(28,33,38,.35)"; g.lineWidth = 3;
-  g.beginPath(); g.roundRect(4, 4, 120, 56, 12); g.fill(); g.stroke();
-  g.fillStyle = "#1c2126"; g.font = "bold 36px 'Malgun Gothic', sans-serif";
-  g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(e.이름, 64, 34);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({map: t, depthTest: false}));
-  /* 두 줄짜리 열(B1·B2)은 이름표가 겹치므로 열의 위 끝 쪽에 엇갈려 단다 */
-  const 짝 = e.이름.endsWith("2") ? 1 : -1;
-  s.position.copy(V((e.x0 + e.x1) / 2, 짝 < 0 ? e.y0 - 0.5 : e.y1 + 0.5, 2.4));
-  s.scale.set(1.1, 0.55, 1);
-  s.renderOrder = 10;
-  scene.add(s); 이름표.push(s);
+  타일 = new THREE.LineSegments(g, new THREE.LineBasicMaterial({color: 0x465262, transparent: true, opacity: 0.16}));
+  타일.visible = 층.바닥.보임; scene.add(타일);
+  센서표맞추기();
+}
+function 센서표맞추기() {
+  const 있는 = new Set();
+  for (const it of 모형.항목) {
+    if (분류(it) !== "센서") continue;
+    있는.add(it.id);
+    let s = 센서표.get(it.id);
+    if (!s || s.material !== 센서표재질(it.종류)) {
+      if (s) scene.remove(s);
+      s = new THREE.Sprite(센서표재질(it.종류)); s.scale.set(.26, .26, 1); s.renderOrder = 12;
+      scene.add(s); 센서표.set(it.id, s);
+    }
+    s.position.copy(V(it.x, it.y, (it.z0 || 0) + it.h + .2));
+    s.visible = 층.센서.보임;
+  }
+  for (const [id, s] of 센서표) if (!있는.has(id)) { scene.remove(s); 센서표.delete(id); }
+}
+function 열목록() {
+  const 열들 = new Map();
+  for (const it of 모형.항목) {
+    if (분류(it) !== "랙" || !it.열) continue;
+    const b = 범위(it);
+    const e = 열들.get(it.열) || {이름: it.열, x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9, ids: []};
+    e.x0 = Math.min(e.x0, b.x0); e.y0 = Math.min(e.y0, b.y0); e.x1 = Math.max(e.x1, b.x1); e.y1 = Math.max(e.y1, b.y1);
+    e.ids.push(it.id); 열들.set(it.열, e);
+  }
+  return 열들;
+}
+/* 모형 전체를 장면에 맞춘다 (항목이 늘거나 줄었을 때) */
+function 장면맞추기() {
+  색인();
+  for (const it of 모형.항목) 매시맞추기(it);
+  for (const [id, m] of 매시들) if (!찾기id.has(id)) { scene.remove(m); 매시들.delete(id); }
+  for (const id of [...고른]) if (!찾기id.has(id)) 고른.delete(id);
+  덧붙이맞추기(); 빛맞추기(); 칠하기();
+  더러움 = true;
 }
 
-/* ── 고르기 ──────────────────────────────────────────────────────── */
+/* ── 고르기 (3D 광선) ───────────────────────────────────────────────── */
 const 광선 = new THREE.Raycaster();
 const 바닥면 = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-function 화면좌표(e, el = renderer.domElement) {
-  const r = el.getBoundingClientRect();
+let 편집중 = false, 편집보기 = "2D";
+const 지금카메라 = () => 편집중 && 편집보기 === "2D" ? 평면cam : camera;
+function 화면좌표(e) {
+  const r = stage.getBoundingClientRect();
   return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
 }
-function 집기(ndc) {
-  광선.setFromCamera(ndc, camera);
-  const 대상 = [묶.rack, 묶.ac, 묶.col].filter(m => m.visible);
+function 집기3D(ndc, 편집용 = false) {
+  광선.setFromCamera(ndc, 지금카메라());
+  const 대상 = [];
+  for (const [id, m] of 매시들) {
+    const it = 찾기id.get(id); if (!it || !m.visible) continue;
+    if (편집용 ? !만질수있나(it) : (분류(it) === "바닥" || it.종류 === "wall")) continue;
+    대상.push(m);
+  }
   const h = 광선.intersectObjects(대상, false)[0];
-  return h ? {mesh: h.object, i: h.instanceId, 점: h.point} : null;
+  return h ? 찾기id.get(h.object.userData.id) : null;
 }
 function 바닥점(ndc) {
-  광선.setFromCamera(ndc, camera);
+  광선.setFromCamera(ndc, 지금카메라());
   const p = new THREE.Vector3();
   return 광선.ray.intersectPlane(바닥면, p) ? p : null;
 }
 
-let 고른 = [], 위에 = null;
+const 고른 = new Set();
+let 위에 = null;
 function 칠하기() {
-  for (const m of [묶.rack, 묶.ac, 묶.col]) {
-    m.userData.목록.forEach((_, i) => m.setColorAt(i, m.userData.기본));
+  for (const [id, m] of 매시들) {
+    const it = 찾기id.get(id); if (!it) continue;
+    const 새 = 고른.has(id) ? 고름재질 : 위에 === id ? 위재질 : 재질(it.종류);
+    if (m.material !== 새) m.material = 새;
   }
-  if (위에) 위에.mesh.setColorAt(위에.i, 위색);
-  for (const k of 고른) k.mesh.setColorAt(k.i, 고름색);
-  for (const m of [묶.rack, 묶.ac, 묶.col]) m.instanceColor.needsUpdate = true;
   더러움 = true;
 }
-const 같은것 = (a, b) => a && b && a.mesh === b.mesh && a.i === b.i;
+function 고르기(ids, 더하기 = false) {
+  if (!더하기) 고른.clear();
+  for (const id of ids) 고른.add(id);
+  칠하기(); 고름바뀜();
+}
 
+/* ── 보기 모드 정보 창 ─────────────────────────────────────────────── */
 function 정보() {
   const el = $("info");
   el.replaceChildren();
-  if (!고른.length) { 알림("객체를 누르면 정보가 나옵니다", "두 번 누르면 그 자리로 갑니다."); return; }
-  const 줄 = (k, v) => {
-    const d = document.createElement("div");
-    const s = document.createElement("span"); s.className = "k"; s.textContent = k;
-    d.append(s, document.createTextNode(v)); el.append(d);
-  };
-  const b0 = document.createElement("b");
-  if (고른.length > 1) {
-    const 첫 = 고른[0].mesh.userData.목록[고른[0].i], 끝 = 고른[고른.length - 1].mesh.userData.목록[고른[고른.length - 1].i];
-    b0.textContent = "열 " + 첫.열; el.append(b0);
-    줄("랙", `${고른.length}대 (${첫.id} ~ ${끝.id})`);
+  const ids = [...고른];
+  if (!ids.length) { 알림("객체를 누르면 정보가 나옵니다", "두 번 누르면 그 자리로 갑니다."); return; }
+  const 줄 = (k, v) => el.append(엘("div", {}, 엘("span", {class: "k", textContent: k}), v));
+  if (ids.length > 1) {
+    const 첫 = 찾기id.get(ids[0]), 끝 = 찾기id.get(ids[ids.length - 1]);
+    el.append(엘("b", {textContent: 첫.열 ? "열 " + 첫.열 : ids.length + "개"}));
+    줄("항목", `${ids.length}개 (${첫.id} ~ ${끝.id})`);
   } else {
-    const {mesh, i} = 고른[0], b = mesh.userData.목록[i];
-    b0.textContent = b.id + " "; el.append(b0);
-    const s = document.createElement("span"); s.className = "sub"; s.textContent = 재질정보[mesh.userData.종류].이름;
-    b0.after(s);
-    if (b.이름) 줄("구분", b.이름);
-    줄("위치", `X ${b.x.toFixed(2)} m · Y ${b.y.toFixed(2)} m`);
-    줄("크기", `${b.w.toFixed(2)} × ${b.d.toFixed(2)} × ${b.h.toFixed(2)} m`);
+    const it = 찾기id.get(ids[0]);
+    el.append(엘("b", {textContent: it.id + " "}), 엘("span", {class: "sub", textContent: 장비[it.종류].이름}));
+    if (it.이름 && it.이름 !== 장비[it.종류].이름) 줄("이름", it.이름);
+    if (it.열) 줄("열", it.열);
+    줄("위치", `X ${it.x.toFixed(2)} m · Y ${it.y.toFixed(2)} m`);
+    줄("크기", `${it.w.toFixed(2)} × ${it.d.toFixed(2)} × ${it.h.toFixed(2)} m`);
+    if (it.회전) 줄("회전", `${it.회전}°`);
+    if (it.점) 줄("센서 코드", it.점);
+    if (it.메모) 줄("메모", it.메모);
   }
-  const d = document.createElement("div"); d.className = "sub"; d.style.marginTop = "4px";
-  d.textContent = "F 를 누르면 가까이 갑니다."; el.append(d);
+  el.append(엘("div", {class: "sub", style: "margin-top:4px", textContent: "F 를 누르면 가까이 갑니다."}));
 }
 
-/* ── 시점 옮기기 ──────────────────────────────────────────────────
-   목표점과 카메라를 함께 옮긴다. 방향은 두고, 거리만 바꾸거나 둔다. */
+/* ── 시점 옮기기 ────────────────────────────────────────────────────── */
 let 비행 = null, 더러움 = true;
 function 날기(목표, 거리 = null, 방향 = null, ms = 450) {
   const 시작 = {t: performance.now(), 목표: controls.target.clone(), 차: camera.position.clone().sub(controls.target)};
-  const 끝차 = (방향 ? 방향.clone().normalize() : 시작.차.clone().normalize())
-    .multiplyScalar(거리 ?? 시작.차.length());
+  const 끝차 = (방향 ? 방향.clone().normalize() : 시작.차.clone().normalize()).multiplyScalar(거리 ?? 시작.차.length());
   비행 = {시작, 끝목표: 목표.clone(), 끝차, ms};
 }
 function 비행진행(now) {
@@ -323,7 +602,6 @@ const 지금거리 = () => camera.position.distanceTo(controls.target);
 function 옮기기(d) { controls.target.add(d); camera.position.add(d); 더러움 = true; }
 function 앞오른쪽() {
   const 앞 = controls.target.clone().sub(camera.position); 앞.y = 0;
-  /* 바로 위에서 내려다보면 앞이 0 이 된다 — 화면 위쪽 방향을 앞으로 쓴다 */
   if (앞.lengthSq() < 1e-6) 앞.copy(camera.up).applyQuaternion(camera.quaternion).setY(0);
   if (앞.lengthSq() < 1e-6) 앞.set(0, 0, -1);
   앞.normalize();
@@ -338,65 +616,66 @@ function 돌리기(각) {
   const 차 = camera.position.clone().sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), 각);
   camera.position.copy(controls.target).add(차); 더러움 = true;
 }
-/* 방위(az)·올려본 각(el) → 카메라 방향. az 0 이면 평면 아래쪽(+y)에서 위를 본다. */
 const 방향 = (az, el) => new THREE.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
 function 맞춤거리(반지름) {
   const v = THREE.MathUtils.degToRad(camera.fov) / 2;
   const h = Math.atan(Math.tan(v) * camera.aspect);
   return 반지름 / Math.sin(Math.min(v, h));
 }
-const 가운데 = V(방.w / 2, 방.d / 2, 0.6);
-const 전체반지름 = Math.hypot(방.w, 방.d) / 2 * 0.86;
+const 가운데 = () => V(방().w / 2, 방().d / 2, 0.6);
+const 전체반지름 = () => Math.hypot(방().w, 방().d) / 2 * 0.86;
 const 시점들 = {
-  iso: () => 날기(가운데, 맞춤거리(전체반지름), 방향(0.16, 0.72)),
-  top: () => 날기(가운데, 맞춤거리(전체반지름) * 0.97, 방향(0, 1.5)),
-  /* 사람이 랙 사이 가장 넓은 통로에 서서 통로를 따라 보는 자리 */
-  eye: () => 날기(V(랙통로(), 방.d * 0.45, 1.5), 9, 방향(0, 0.09)),
+  iso: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(0.16, 0.72)),
+  top: () => 날기(가운데(), 맞춤거리(전체반지름()) * 0.97, 방향(0, 1.5)),
+  eye: () => 날기(V(랙통로(), 방().d * 0.45, 1.5), 9, 방향(0, 0.09)),
 };
 function 랙통로() {
-  const 열 = [...열들.values()].map(e => ({x0: e.x0, x1: e.x1})).sort((p, q) => p.x0 - q.x0);
-  let 최대 = 0, 자리 = 방.w / 2;
+  const 열 = [...열목록().values()].sort((p, q) => p.x0 - q.x0);
+  let 최대 = 0, 자리 = 방().w / 2;
   for (let i = 1; i < 열.length; i++) {
     const 폭 = 열[i].x0 - 열[i - 1].x1;
     if (폭 > 최대) { 최대 = 폭; 자리 = (열[i].x0 + 열[i - 1].x1) / 2; }
   }
   return 자리;
 }
-function 가까이(목록) {
-  if (!목록.length) return;
+function 가까이(ids) {
+  if (!ids.length) return;
   const 상 = new THREE.Box3();
-  for (const {mesh, i} of 목록) {
-    const b = mesh.userData.목록[i];
-    상.expandByPoint(V(b.x, b.y, 0)).expandByPoint(V(b.x + b.w, b.y + b.d, b.h));
+  for (const id of ids) {
+    const it = 찾기id.get(id); if (!it) continue;
+    const b = 범위(it);
+    상.expandByPoint(V(b.x0, b.y0, it.z0 || 0)).expandByPoint(V(b.x1, b.y1, (it.z0 || 0) + it.h));
   }
+  if (상.isEmpty()) return;
   const c = 상.getCenter(new THREE.Vector3()); c.y = Math.min(c.y, 1.0);
   const r = 상.getSize(new THREE.Vector3()).length() / 2;
-  날기(c, Math.max(7, 맞춤거리(r) * 1.25));     // 랙 하나면 이웃 랙까지 보이는 거리
+  날기(c, Math.max(7, 맞춤거리(r) * 1.25));
 }
 
-/* ── 마우스 ──────────────────────────────────────────────────────── */
-const cv = renderer.domElement;
+/* ── 보기 모드 마우스 ───────────────────────────────────────────────── */
 let 누름 = null, 볼점 = null;
 cv.addEventListener("pointerdown", e => {
+  if (편집중) return;
   비행 = null;
   누름 = {x: e.clientX, y: e.clientY, 버튼: e.button};
   cv.classList.add("drag");
 });
 addEventListener("pointerup", e => {
+  if (편집중) return;
   cv.classList.remove("drag");
   if (!누름 || e.target !== cv) { 누름 = null; return; }
-  const 움직임 = Math.hypot(e.clientX - 누름.x, e.clientY - 누름.y);
-  if (누름.버튼 === 0 && 움직임 < 5) {
-    const h = 집기(화면좌표(e));
-    고른 = h ? [h] : []; 정보(); 칠하기();
+  if (누름.버튼 === 0 && Math.hypot(e.clientX - 누름.x, e.clientY - 누름.y) < 5) {
+    const it = 집기3D(화면좌표(e));
+    고르기(it ? [it.id] : []); 정보();
   }
   누름 = null;
 });
-cv.addEventListener("pointermove", e => { if (!누름) 볼점 = 화면좌표(e); });
-cv.addEventListener("pointerleave", () => { 볼점 = null; if (위에) { 위에 = null; 칠하기(); } });
+cv.addEventListener("pointermove", e => { if (!편집중 && !누름) 볼점 = 화면좌표(e); });
+cv.addEventListener("pointerleave", () => { 볼점 = null; if (위에 && !편집중) { 위에 = null; 칠하기(); } });
 cv.addEventListener("dblclick", e => {
-  const ndc = 화면좌표(e), h = 집기(ndc);
-  if (h) { 고른 = [h]; 정보(); 칠하기(); 가까이([h]); return; }
+  if (편집중) return;
+  const ndc = 화면좌표(e), it = 집기3D(ndc);
+  if (it) { 고르기([it.id]); 정보(); 가까이([it.id]); return; }
   const p = 바닥점(ndc);
   if (p) 날기(p.setY(0.6), Math.min(지금거리(), 14));
 });
@@ -404,66 +683,50 @@ cv.addEventListener("wheel", () => { 비행 = null; }, {passive: true});
 cv.addEventListener("contextmenu", e => e.preventDefault());
 controls.addEventListener("change", () => { 더러움 = true; });
 
-/* ── 키보드 ──────────────────────────────────────────────────────── */
-addEventListener("keydown", e => {
-  if (e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey || e.altKey) return;
-  const 걸음 = 지금거리() * 0.08, {앞, 오른} = 앞오른쪽();
-  const k = e.key.toLowerCase();
-  const 동작 = {
-    arrowup: () => 옮기기(앞.multiplyScalar(걸음)),    w: () => 옮기기(앞.multiplyScalar(걸음)),
-    arrowdown: () => 옮기기(앞.multiplyScalar(-걸음)), s: () => 옮기기(앞.multiplyScalar(-걸음)),
-    arrowleft: () => 옮기기(오른.multiplyScalar(-걸음)), a: () => 옮기기(오른.multiplyScalar(-걸음)),
-    arrowright: () => 옮기기(오른.multiplyScalar(걸음)), d: () => 옮기기(오른.multiplyScalar(걸음)),
-    q: () => 돌리기(0.12), e: () => 돌리기(-0.12),
-    "+": () => 확대(0.85), "=": () => 확대(0.85), "-": () => 확대(1.18), "_": () => 확대(1.18),
-    f: () => 가까이(고른), home: () => 시점들.iso(),
-  }[k];
-  if (!동작) return;
-  e.preventDefault(); 비행 = null; 동작();
-});
-
-/* ── 미니맵 — 평면 위에서 보는 곳을 누르거나 끌어 고른다 ─────────── */
+/* ── 미니맵 ─────────────────────────────────────────────────────────── */
 const mini = $("mini"), mg = mini.getContext("2d");
 const 미 = {w: 262, 여백: 6};
-미.k = (미.w - 미.여백 * 2) / 방.w;
-미.h = Math.round(방.d * 미.k + 미.여백 * 2);
-{
+function 미니크기() {
+  미.k = (미.w - 미.여백 * 2) / 방().w;
+  미.h = Math.round(방().d * 미.k + 미.여백 * 2);
   const dpr = Math.min(devicePixelRatio || 1, 2);
   mini.width = 미.w * dpr; mini.height = 미.h * dpr;
   mini.style.width = 미.w + "px"; mini.style.height = 미.h + "px";
   mg.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 const 미점 = (x, y) => [미.여백 + x * 미.k, 미.여백 + y * 미.k];
+const 미니색 = {바닥: ["#e8eaec"], 건축: ["#bcc3cb"], 랙: ["#4a515c"], 공조: ["#f2f4f7", "#9aa3ad"], 전력: ["#c9cfd6", "#8f99a4"]};
 function 미니맵() {
   mg.clearRect(0, 0, 미.w, 미.h);
-  const 칸 = (r, 색, 선) => {
-    const [a, b] = 미점(r[0], r[1]);
-    mg.fillStyle = 색; mg.fillRect(a, b, r[2] * 미.k, r[3] * 미.k);
-    if (선) { mg.strokeStyle = 선; mg.lineWidth = 0.6; mg.strokeRect(a, b, r[2] * 미.k, r[3] * 미.k); }
+  const 칠 = (it, 색, 선) => {
+    mg.beginPath(); 모서리(it).forEach(([x, y], i) => { const [a, b] = 미점(x, y); i ? mg.lineTo(a, b) : mg.moveTo(a, b); });
+    mg.closePath(); mg.fillStyle = 색; mg.fill();
+    if (선) { mg.strokeStyle = 선; mg.lineWidth = .6; mg.stroke(); }
   };
-  S.floor.forEach(r => 칸(r, "#e8eaec"));
-  S.wall.forEach(r => 칸(r, "#bcc3cb"));
-  S.ac.forEach(r => 칸(r.slice(1), "#f2f4f7", "#9aa3ad"));
-  S.col.forEach(r => 칸(r.slice(1), "#262a30"));
-  S.rack.forEach(r => 칸(r.slice(2), "#4a515c"));
-  for (const {mesh, i} of 고른) { const b = mesh.userData.목록[i]; 칸([b.x, b.y, b.w, b.d], "#d97706"); }
-
-  /* 화면 네 귀퉁이가 바닥에 닿는 자리 = 지금 보이는 범위. 하늘을 보는 귀퉁이는 멀리 잘라 둔다. */
+  for (const 분 of ["바닥", "건축", "공조", "전력", "랙", "센서"]) {
+    if (!층[분].보임) continue;
+    for (const it of 모형.항목) {
+      if (분류(it) !== 분) continue;
+      if (고른.has(it.id)) { 칠(it, "#d97706"); continue; }
+      if (분 === "센서") {
+        const [a, b] = 미점(it.x, it.y);
+        mg.fillStyle = 색글(장비[it.종류].색); mg.beginPath(); mg.arc(a, b, 1.6, 0, Math.PI * 2); mg.fill();
+      } else if (it.종류 === "col") 칠(it, "#262a30");
+      else if (it.종류 === "door") 칠(it, "#b08d64");
+      else 칠(it, ...미니색[분]);
+    }
+  }
   const 귀 = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => {
     광선.setFromCamera(new THREE.Vector2(x, y), camera);
     const p = new THREE.Vector3();
-    if (!광선.ray.intersectPlane(바닥면, p) || p.distanceTo(camera.position) > 90) {
-      광선.ray.at(90, p);
-    }
+    if (!광선.ray.intersectPlane(바닥면, p) || p.distanceTo(camera.position) > 90) 광선.ray.at(90, p);
     return 미점(p.x, p.z);
   });
   mg.beginPath(); 귀.forEach(([a, b], i) => i ? mg.lineTo(a, b) : mg.moveTo(a, b)); mg.closePath();
   mg.fillStyle = "rgba(0,155,222,.14)"; mg.fill();
   mg.strokeStyle = "rgba(0,155,222,.9)"; mg.lineWidth = 1.2; mg.stroke();
-
   const [tx, ty] = 미점(controls.target.x, controls.target.z);
   const [cx, cy] = 미점(camera.position.x, camera.position.z);
-  mg.strokeStyle = "rgba(0,155,222,.9)"; mg.lineWidth = 1.2;
   mg.beginPath(); mg.moveTo(cx, cy); mg.lineTo(tx, ty); mg.stroke();
   mg.fillStyle = "#009bde"; mg.beginPath(); mg.arc(cx, cy, 3.5, 0, Math.PI * 2); mg.fill();
   mg.strokeStyle = "#fa5a00"; mg.lineWidth = 2;
@@ -472,85 +735,1056 @@ function 미니맵() {
 function 미니에서(e) {
   const r = mini.getBoundingClientRect();
   const x = (e.clientX - r.left - 미.여백) / 미.k, y = (e.clientY - r.top - 미.여백) / 미.k;
-  return V(THREE.MathUtils.clamp(x, 0, 방.w), THREE.MathUtils.clamp(y, 0, 방.d), controls.target.y);
+  return V(THREE.MathUtils.clamp(x, 0, 방().w), THREE.MathUtils.clamp(y, 0, 방().d), controls.target.y);
 }
 let 미끌기 = false;
-mini.addEventListener("pointerdown", e => {
-  미끌기 = true; mini.setPointerCapture(e.pointerId);
-  날기(미니에서(e), null, null, 250);
-});
-mini.addEventListener("pointermove", e => {
-  if (!미끌기) return;
-  비행 = null; 옮기기(미니에서(e).sub(controls.target));
-});
+mini.addEventListener("pointerdown", e => { 미끌기 = true; mini.setPointerCapture(e.pointerId); 날기(미니에서(e), null, null, 250); });
+mini.addEventListener("pointermove", e => { if (!미끌기) return; 비행 = null; 옮기기(미니에서(e).sub(controls.target)); });
 mini.addEventListener("pointerup", () => { 미끌기 = false; });
 mini.addEventListener("wheel", e => { e.preventDefault(); 비행 = null; 확대(e.deltaY > 0 ? 1.15 : 0.87); }, {passive: false});
 
-/* ── 찾기 — 랙 R123(또는 123) · 열 C1 · 항온항습기 AC05 · 기둥 C01 ── */
+/* ── 찾기 — 랙 R123(또는 123) · 열 C1 · 항온항습기 AC05 · 기둥 C01 · 그 밖의 ID ── */
+function 찾기(글) {
+  const 말 = 글.trim().toUpperCase().replace(/\s+/g, "");
+  if (!말) return null;
+  const 열 = 열목록().get(말);
+  if (열) return 열.ids;
+  const 후보 = new Set([말, /^\d+$/.test(말) ? "R" + 말.padStart(3, "0") : 말,
+    말.replace(/^([A-Z]+)(\d+)$/, (_, a, n) => a + n.padStart(a === "R" || a === "W" || a === "F" ? 3 : 2, "0"))]);
+  for (const it of 모형.항목) if (후보.has(it.id.toUpperCase())) return [it.id];
+  return [];
+}
 $("find").addEventListener("keydown", e => {
   if (e.key !== "Enter") return;
-  const 말 = e.target.value.trim().toUpperCase().replace(/\s+/g, "");
-  if (!말) return;
-  let 찾음 = [];
-  if (열들.has(말)) 찾음 = 열들.get(말).번호.map(i => ({mesh: 묶.rack, i}));
-  else {
-    const 후보 = [/^\d+$/.test(말) ? "R" + 말.padStart(3, "0") : 말,
-                  말.replace(/^(R|AC|C)(\d+)$/, (_, a, n) => a + n.padStart(a === "R" ? 3 : 2, "0"))];
-    for (const m of [묶.rack, 묶.ac, 묶.col]) {
-      const i = m.userData.목록.findIndex(b => 후보.includes(b.id));
-      if (i >= 0) { 찾음 = [{mesh: m, i}]; break; }
-    }
+  const ids = 찾기(e.target.value);
+  if (!ids) return;
+  if (!ids.length) {
+    고르기([]);
+    알림(`「${e.target.value.trim()}」 를 찾지 못했습니다`, "랙은 R123, 열은 C1, 항온항습기는 AC05, 기둥은 C01 처럼 적어 주세요.");
+    return;
   }
-  if (!찾음.length) { 고른 = []; 칠하기(); 알림(`「${e.target.value.trim()}」 를 찾지 못했습니다`, "랙은 R123, 열은 C1, 항온항습기는 AC05, 기둥은 C01 처럼 적어 주세요."); return; }
-  찾음.forEach(k => k.mesh.visible = true);
-  고른 = 찾음; 정보(); 칠하기(); 가까이(찾음);
-  e.target.blur();
+  for (const id of ids) 층[분류(찾기id.get(id))].보임 = true;
+  층체크그리기(); 장면맞추기();
+  고르기(ids); 정보(); 가까이(ids); e.target.blur();
 });
 
-/* ── 보이기·단추 ──────────────────────────────────────────────────── */
-for (const [id, 켜기] of [
-  ["t_rack",  v => { 묶.rack.visible = v; 이름표.forEach(s => s.visible = v); }],
-  ["t_ac",    v => { 묶.ac.visible = v; }],
-  ["t_col",   v => { 묶.col.visible = v; }],
-  ["t_wall",  v => { 묶.wall.visible = v; }],
-  ["t_floor", v => { 묶.floor.visible = v; 타일.visible = v; }],
-]) $(id).addEventListener("change", e => { 켜기(e.target.checked); 더러움 = true; });
+/* ── 보기 모드 단추 ─────────────────────────────────────────────────── */
+function 층체크그리기() {
+  const 수 = {}; for (const it of 모형.항목) 수[분류(it)] = (수[분류(it)] || 0) + 1;
+  $("layerChecks").replaceChildren(...분류목록.map(c => 엘("label", {},
+    엘("input", {type: "checkbox", checked: 층[c.키].보임, onchange: e => 층보임(c.키, e.target.checked)}),
+    엘("span", {class: "sw", style: "background:" + c.견}), 엘("span", {}, c.이름 + " ", 엘("span", {class: "sub", textContent: (수[c.키] || 0) + "개"})))));
+}
+function 층보임(키, v) {
+  층[키].보임 = v;
+  if (!v) for (const id of [...고른]) if (분류(찾기id.get(id)) === 키) 고른.delete(id);
+  for (const it of 모형.항목) if (분류(it) === 키) 매시맞추기(it);
+  덧붙이맞추기(); 칠하기(); 층체크그리기(); if (편집중) { 레이어그리기(); 고름바뀜(); }
+}
 $("t_wallhi").addEventListener("change", e => {
-  const h = e.target.checked ? 3.6 : 1.2;
-  묶.wall.userData.목록.forEach(b => b.h = h);
-  자리놓기(묶.wall); 더러움 = true;
+  벽자름 = !e.target.checked;
+  for (const it of 모형.항목) if (it.종류 === "wall") 매시맞추기(it);
+  더러움 = true;
 });
 $("v_iso").onclick = 시점들.iso;
 $("v_top").onclick = 시점들.top;
 $("v_eye").onclick = 시점들.eye;
 
-/* ── 크기·돌기 ─────────────────────────────────────────────────────── */
-function 크기맞추기() {
-  renderer.setSize(innerWidth, innerHeight, false);
-  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-  더러움 = true;
+/* ── 시점 조절 게이지 ───────────────────────────────────────────────── */
+const 축표시 = (() => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute([0,0.02,0, 2,0.02,0,  0,0.02,0, 0,0.02,2,  0,0.02,0, 0,2,0], 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute([.86,.15,.15,.86,.15,.15, .13,.6,.25,.13,.6,.25, .15,.39,.92,.15,.39,.92], 3));
+  const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({vertexColors: true, depthTest: false}));
+  l.renderOrder = 11; scene.add(l); return l;
+})();
+function 시점읽기() {
+  const t = controls.target, 차 = camera.position.clone().sub(t), 거리 = 차.length();
+  return {x: t.x, y: t.z, z: t.y, 거리,
+          방위: THREE.MathUtils.radToDeg(Math.atan2(차.x, 차.z)),
+          기울기: THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(차.y / 거리, -1, 1)))};
 }
-addEventListener("resize", 크기맞추기);
+function 시점쓰기(부분) {
+  const v = Object.assign(시점읽기(), 부분);
+  for (const 게 of 게이지) v[게.키] = THREE.MathUtils.clamp(v[게.키], 게.min, 게.max);
+  비행 = null;
+  controls.target.set(v.x, v.z, v.y);
+  camera.position.copy(controls.target).add(
+    방향(THREE.MathUtils.degToRad(v.방위), THREE.MathUtils.degToRad(v.기울기)).multiplyScalar(v.거리));
+  controls.update(); 더러움 = true;
+}
+const 로그 = {
+  막대: d => Math.log(d / controls.minDistance) / Math.log(controls.maxDistance / controls.minDistance) * 1000,
+  값: s => controls.minDistance * (controls.maxDistance / controls.minDistance) ** (s / 1000),
+};
+const 게이지 = [
+  {키: "x", 이름: "X 이동", 색: "#db2626", 단위: "m", min: 0, max: 1, 걸음: 0.1, 자리: 2},
+  {키: "y", 이름: "Y 이동", 색: "#21993f", 단위: "m", min: 0, max: 1, 걸음: 0.1, 자리: 2},
+  {키: "z", 이름: "Z 높이", 색: "#2663eb", 단위: "m", min: 0, max: 4, 걸음: 0.1, 자리: 2},
+  {키: "방위", 이름: "회전", 단위: "°", min: -180, max: 180, 걸음: 1, 자리: 1, 돌림: true},
+  {키: "기울기", 이름: "기울기", 단위: "°", min: 2, max: 89.5, 걸음: 1, 자리: 1},
+  {키: "거리", 이름: "확대", 단위: "m", min: controls.minDistance, max: controls.maxDistance, 걸음: 0.1, 자리: 2, 로그: true},
+];
+for (const 게 of 게이지) {
+  const 이름 = 엘("span", {class: "이름"}, 게.색 ? 엘("i", {style: "background:" + 게.색}) : null, 게.이름);
+  const 왼 = 엘("button", {textContent: 게.로그 ? "－" : "◀", title: 게.로그 ? "멀리" : null});
+  const 오 = 엘("button", {textContent: 게.로그 ? "＋" : "▶", title: 게.로그 ? "가까이" : null});
+  const 막대 = 엘("input", {type: "range"}), 숫자 = 엘("input", {type: "number"});
+  if (게.로그) { 막대.min = 0; 막대.max = 1000; 막대.step = 1; }
+  else { 막대.min = 게.min; 막대.max = 게.max; 막대.step = 게.걸음 / 10; }
+  숫자.min = 게.min; 숫자.max = 게.max; 숫자.step = 게.걸음 / 10;
+  $("g_rows").append(엘("div", {class: "g"}, 이름, 왼, 막대, 오, 엘("label", {}, 숫자, 게.단위)));
+  Object.assign(게, {막대, 숫자});
+  막대.addEventListener("input", () => 시점쓰기({[게.키]: 게.로그 ? 로그.값(+막대.value) : +막대.value}));
+  숫자.addEventListener("change", () => { if (숫자.value !== "") 시점쓰기({[게.키]: +숫자.value}); });
+  const 한칸 = 부호 => {
+    const 배 = +$("g_step").value, 지금 = 시점읽기()[게.키];
+    const 비 = 1 - 0.01 * 배;          // 확대는 거리의 0.1 % · 1 % · 10 % 씩
+    let 새 = 게.로그 ? (부호 > 0 ? 지금 * 비 : 지금 / 비) : 지금 + 부호 * 게.걸음 * 배;
+    if (게.돌림) 새 = ((새 + 540) % 360) - 180;
+    시점쓰기({[게.키]: 새});
+  };
+  for (const [단추, 부호] of [[왼, -1], [오, 1]]) {
+    let 타이머 = null;
+    const 멈춤 = () => { clearTimeout(타이머); clearInterval(타이머); 타이머 = null; };
+    단추.addEventListener("pointerdown", e => {
+      e.preventDefault(); 한칸(부호);
+      타이머 = setTimeout(() => { 타이머 = setInterval(() => 한칸(부호), 50); }, 350);
+    });
+    for (const ev of ["pointerup", "pointerleave", "pointercancel"]) 단추.addEventListener(ev, 멈춤);
+  }
+}
+function 게이지범위() {
+  게이지[0].max = 방().w; 게이지[1].max = 방().d;
+  for (const 게 of 게이지.slice(0, 2)) { 게.막대.max = 게.max; 게.숫자.max = 게.max; }
+}
+function 게이지맞추기() {
+  const v = 시점읽기();
+  for (const 게 of 게이지) {
+    if (document.activeElement !== 게.숫자) 게.숫자.value = v[게.키].toFixed(게.자리);
+    if (document.activeElement !== 게.막대) 게.막대.value = 게.로그 ? 로그.막대(v[게.키]) : v[게.키];
+  }
+}
+$("g_fold").onclick = () => {
+  const 접 = $("gauge").classList.toggle("접힘");
+  $("g_fold").textContent = 접 ? "펴기" : "접기";
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   편집 모드 — 포토샵처럼
+   메뉴 · 옵션 막대 · 도구 · 패널(장비·레이어·속성·작업 내역) · 상태줄
+   평면(2D) 에서 정밀하게 고치고, 3D 로 바꿔 바로 확인한다.
+   ══════════════════════════════════════════════════════════════════ */
+const 평면 = {cx: 0, cy: 0, 배율: 20};             // 배율 = 1 m 가 몇 px
+function 평면맞추기() {
+  평면cam.left = -W / 2 / 평면.배율; 평면cam.right = W / 2 / 평면.배율;
+  평면cam.top = H / 2 / 평면.배율; 평면cam.bottom = -H / 2 / 평면.배율;
+  평면cam.position.set(평면.cx, 80, 평면.cy); 평면cam.lookAt(평면.cx, 0, 평면.cy);
+  평면cam.updateProjectionMatrix(); 더러움 = true;
+}
+function 평면전체() {
+  평면.배율 = Math.min((W - 60) / (방().w + 1), (H - 60) / (방().d + 1));
+  평면.cx = 방().w / 2; 평면.cy = 방().d / 2; 평면맞추기();
+}
+const 화면xy = (e) => { const r = stage.getBoundingClientRect(); return {sx: e.clientX - r.left, sy: e.clientY - r.top}; };
+const 화면에서평면 = (sx, sy) => ({x: 평면.cx + (sx - W / 2) / 평면.배율, y: 평면.cy + (sy - H / 2) / 평면.배율});
+const 평면에서화면 = (x, y) => [W / 2 + (x - 평면.cx) * 평면.배율, H / 2 + (y - 평면.cy) * 평면.배율];
+function 편집점(e) {           // 마우스 아래 평면 좌표 (3D 에서는 바닥과 만나는 점)
+  if (편집보기 === "2D") { const {sx, sy} = 화면xy(e); return 화면에서평면(sx, sy); }
+  const p = 바닥점(화면좌표(e)); return p ? {x: p.x, y: p.z} : null;
+}
+function 평면확대(배, sx = W / 2, sy = H / 2) {
+  const p = 화면에서평면(sx, sy);
+  평면.배율 = THREE.MathUtils.clamp(평면.배율 * 배, 2, 3000);
+  평면.cx = p.x - (sx - W / 2) / 평면.배율; 평면.cy = p.y - (sy - H / 2) / 평면.배율;
+  평면맞추기();
+}
+
+let 도구 = "이동", 놓을종류 = null, 격자 = 0.6, 끌기 = null, 스페이스 = false, 자표시 = null, 안내 = null, 저장됨 = true, 상태말 = "";
+const 도구들 = [
+  {키: "이동",   글: "↖", 단축: "V", 설명: "이동 — 눌러 고르고 끌어 옮깁니다. Alt 끌기 = 복제, Shift = 더 고르기"},
+  {키: "사각",   글: "⬚", 단축: "M", 설명: "사각 선택 — 끌어서 상자 안에 든 것을 모두 고릅니다"},
+  {키: "회전",   글: "⟳", 단축: "R", 설명: "회전 — 고른 것을 끌어 돌립니다. Shift = 15° 씩"},
+  {키: "손",     글: "✋", 단축: "H", 설명: "손 — 화면을 끌어 옮깁니다 (스페이스를 누르고 있어도 됩니다)"},
+  {키: "돋보기", 글: "⌕", 단축: "Z", 설명: "돋보기 — 누르면 확대, Alt 와 함께 누르면 축소합니다"},
+  {키: "벽",     글: "▭", 단축: "B", 설명: "벽 그리기 — 끌어서 벽을 긋습니다. Shift = 45° 씩"},
+  {키: "자",     글: "⟷", 단축: "I", 설명: "자 — 끌어서 거리를 잽니다"},
+];
+
+/* ── 작업 내역 (실행 취소) ── */
+const 내역 = {목록: [], 위치: -1};
+function 기록(이름, 합치기 = false) {
+  const 상태 = JSON.stringify({방: 모형.방, 항목: 모형.항목});
+  내역.목록.splice(내역.위치 + 1);
+  const 끝 = 내역.목록[내역.목록.length - 1];
+  if (합치기 && 끝 && 끝.이름 === 이름 && performance.now() - 끝.때 < 1500) { 끝.상태 = 상태; 끝.때 = performance.now(); }
+  else 내역.목록.push({이름, 상태, 때: performance.now()});
+  if (내역.목록.length > 150) 내역.목록.shift();
+  내역.위치 = 내역.목록.length - 1;
+  if (이름 !== "열기") 저장됨 = false;
+  내역그리기(); 레이어그리기(); 고름바뀜();
+}
+function 내역가기(i) {
+  if (i < 0 || i >= 내역.목록.length) return;
+  내역.위치 = i;
+  const s = JSON.parse(내역.목록[i].상태);
+  모형.방 = s.방; 모형.항목 = s.항목;
+  저장됨 = false; 장면맞추기(); 내역그리기(); 레이어그리기(); 고름바뀜();
+}
+const 되돌리기 = () => 내역가기(내역.위치 - 1);
+const 다시하기 = () => 내역가기(내역.위치 + 1);
+
+/* ── 항목 만들기·지우기 ── */
+function 새아이디(종류) {
+  const p = 장비[종류].접두, 틀 = new RegExp("^" + p + "(\\d+)$");
+  let 최대 = 0, 자리 = p === "R" || p === "W" || p === "F" ? 3 : 2;
+  for (const it of 모형.항목) { const m = 틀.exec(it.id); if (m) { 최대 = Math.max(최대, +m[1]); 자리 = Math.max(자리, m[1].length); } }
+  return p + String(최대 + 1).padStart(자리, "0");
+}
+function 새항목(종류, x, y, 더 = {}) {
+  const k = 장비[종류];
+  const it = {id: 새아이디(종류), 종류, 이름: k.이름, x: 둘째(x), y: 둘째(y), w: k.w, d: k.d, h: k.h, z0: k.z0 || 0, 회전: 0, ...더};
+  if (k.분류 === "랙") it.열 = it.열 || "";
+  모형.항목.push(it); 찾기id.set(it.id, it);
+  return it;
+}
+function 격자맞춤(v) { return 격자 > 0 ? Math.round(v / 격자) * 격자 : v; }
+function 놓기(종류, p) {
+  const k = 장비[종류];
+  let x = p.x, y = p.y;
+  if (격자 > 0) { x = 격자맞춤(x - k.w / 2) + k.w / 2; y = 격자맞춤(y - k.d / 2) + k.d / 2; }
+  층[k.분류].보임 = true; 층[k.분류].잠금 = false;
+  const it = 새항목(종류, x, y);
+  장면맞추기(); 고르기([it.id]);
+  기록(k.이름 + " 놓기");
+  놓을종류 = null; 라이브러리켬(); 도구고르기("이동");
+  return it;
+}
+function 지우기() {
+  if (!고른.size) return;
+  const n = 고른.size;
+  모형.항목 = 모형.항목.filter(it => !고른.has(it.id));
+  고른.clear(); 장면맞추기(); 기록(n + "개 지우기");
+}
+let 클립 = null, 붙인횟수 = 0;
+function 복사() { if (!고른.size) return; 클립 = 모형.항목.filter(it => 고른.has(it.id)).map(깊은복사); 붙인횟수 = 0; 상태(클립.length + "개 복사했습니다"); }
+function 붙여넣기(목록 = 클립, 이름 = "붙여넣기", 밀기 = true) {
+  if (!목록 || !목록.length) return [];
+  붙인횟수++;
+  const 차 = 밀기 ? (격자 || .6) * (목록 === 클립 ? 붙인횟수 : 1) : 0;
+  const 새것 = 목록.map(o => {
+    const {id, ...나머지} = 깊은복사(o);            // ID 는 새로 매긴다
+    return 새항목(o.종류, o.x + 차, o.y + 차, {...나머지, x: 둘째(o.x + 차), y: 둘째(o.y + 차)});
+  });
+  장면맞추기(); 고르기(새것.map(it => it.id));
+  if (이름) 기록(이름);
+  return 새것;
+}
+function 복제() { 붙여넣기(모형.항목.filter(it => 고른.has(it.id)).map(깊은복사), "복제"); }
+
+/* ── 고른 것 바꾸기 ── */
+const 고른항목 = () => 모형.항목.filter(it => 고른.has(it.id));
+function 바꾼것맞추기(목록) { for (const it of 목록) 매시맞추기(it); 센서표맞추기(); 더러움 = true; }
+function 조금옮기기(dx, dy) {
+  const 목록 = 고른항목(); if (!목록.length) return;
+  for (const it of 목록) { it.x = 둘째(it.x + dx); it.y = 둘째(it.y + dy); }
+  바꾼것맞추기(목록); 덧붙이맞추기(); 기록("조금 옮기기", true);
+}
+function 묶음가운데(목록) {
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const it of 목록) { const b = 범위(it); x0 = Math.min(x0, b.x0); y0 = Math.min(y0, b.y0); x1 = Math.max(x1, b.x1); y1 = Math.max(y1, b.y1); }
+  return {x: (x0 + x1) / 2, y: (y0 + y1) / 2, x0, y0, x1, y1};
+}
+function 돌려놓기(목록, 원본, 중심, 도) {
+  const c = Math.cos(라(도)), s = Math.sin(라(도));
+  for (const it of 목록) {
+    const o = 원본.get(it.id), dx = o.x - 중심.x, dy = o.y - 중심.y;
+    it.x = 둘째(중심.x + dx * c - dy * s); it.y = 둘째(중심.y + dx * s + dy * c); it.회전 = 각정리(o.회전 + 도);
+  }
+}
+function 고른것돌리기(도) {
+  const 목록 = 고른항목(); if (!목록.length) return;
+  const 원본 = new Map(목록.map(it => [it.id, {x: it.x, y: it.y, 회전: it.회전 || 0}]));
+  돌려놓기(목록, 원본, 묶음가운데(목록), 도);
+  바꾼것맞추기(목록); 덧붙이맞추기(); 기록(`${도}° 돌리기`);
+}
+function 정렬(방식) {
+  const 목록 = 고른항목(); if (목록.length < 2) { 상태("두 개 이상 고르면 정렬할 수 있습니다"); return; }
+  const 전 = 묶음가운데(목록);
+  if (방식 === "가로간격" || 방식 === "세로간격") {
+    const 축 = 방식 === "가로간격" ? "x" : "y";
+    const 줄 = [...목록].sort((a, b) => a[축] - b[축]);
+    const 처음 = 줄[0][축], 끝 = 줄[줄.length - 1][축];
+    줄.forEach((it, i) => { it[축] = 둘째(처음 + (끝 - 처음) * i / (줄.length - 1)); });
+  } else {
+    for (const it of 목록) {
+      const b = 범위(it);
+      if (방식 === "왼쪽") it.x += 전.x0 - b.x0;
+      if (방식 === "오른쪽") it.x += 전.x1 - b.x1;
+      if (방식 === "가로가운데") it.x += 전.x - (b.x0 + b.x1) / 2;
+      if (방식 === "위") it.y += 전.y0 - b.y0;
+      if (방식 === "아래") it.y += 전.y1 - b.y1;
+      if (방식 === "세로가운데") it.y += 전.y - (b.y0 + b.y1) / 2;
+      it.x = 둘째(it.x); it.y = 둘째(it.y);
+    }
+  }
+  바꾼것맞추기(목록); 덧붙이맞추기(); 기록("정렬");
+}
+function 모두고르기() { 고르기(모형.항목.filter(만질수있나).map(it => it.id)); }
+
+/* ── 저장 ── */
+function 시각() {
+  const d = new Date(), z = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+function 저장() {
+  try {
+    localStorage.setItem(저장열쇠, JSON.stringify({판: 2, 방: 모형.방, 항목: 모형.항목, 저장시각: 시각()}));
+    저장됨 = true; 상태("브라우저에 저장했습니다. 보기 화면도 이 배치를 씁니다.");
+    $("source").textContent = "브라우저에 저장된 배치 · " + 시각();
+  } catch (e) { 상태("저장하지 못했습니다 — " + e.message); }
+}
+function 내려받기() {
+  const 글 = JSON.stringify({판: 2, 방: 모형.방, 항목: 모형.항목, 저장시각: 시각()}, null, 1);
+  const a = 엘("a", {href: URL.createObjectURL(new Blob([글], {type: "application/json"})),
+    download: "전산실_배치_" + 시각().replace(/[-: ]/g, "").slice(0, 12) + ".json"});
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  상태("JSON 파일로 내려받았습니다");
+}
+function 새모형으로(m, 이름) {
+  모형 = m; 고른.clear(); 장면맞추기(); 평면전체(); 미니크기(); 게이지범위(); 기록(이름);
+}
+$("fileIn").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const m = 옛도면바꾸기(JSON.parse(await f.text()));
+    if (!m.방 || !Array.isArray(m.항목)) throw new Error("배치 파일이 아닙니다");
+    for (const it of m.항목) if (!장비[it.종류]) throw new Error("모르는 종류 " + it.종류);
+    새모형으로(m, "파일 열기 — " + f.name);
+  } catch (err) { 상태("열지 못했습니다 — " + err.message); }
+  e.target.value = "";
+});
+
+/* ── 메뉴 ── */
+const 메뉴판 = [
+  ["파일", [
+    ["새 도면 (빈 방)", () => { if (confirm("지금 도면을 비우고 빈 방으로 시작할까요? 저장하기 전에는 브라우저 저장본이 그대로 남습니다.")) 새모형으로({판: 2, 방: {...방()}, 항목: []}, "새 도면"); }],
+    ["JSON 파일 열기…", () => $("fileIn").click(), "Ctrl+O"],
+    "-",
+    ["저장 (브라우저)", 저장, "Ctrl+S"],
+    ["JSON 파일로 내려받기", 내려받기, "Ctrl+Shift+S"],
+    "-",
+    ["처음 도면으로 되돌리기", () => { if (confirm("처음 도면(평면도에서 뽑은 좌표)으로 되돌릴까요? 저장하기 전에는 브라우저 저장본이 그대로 남습니다.")) 새모형으로(깊은복사(원본), "처음 도면"); }],
+  ]],
+  ["편집", [
+    ["실행 취소", 되돌리기, "Ctrl+Z"], ["다시 실행", 다시하기, "Ctrl+Shift+Z"], "-",
+    ["복사", 복사, "Ctrl+C"], ["붙여넣기", () => 붙여넣기(), "Ctrl+V"], ["복제", 복제, "Ctrl+J"], ["지우기", 지우기, "Delete"], "-",
+    ["모두 고르기", 모두고르기, "Ctrl+A"], ["고르기 해제", () => 고르기([]), "Ctrl+D"], "-",
+    ["왼쪽으로 90° 돌리기", () => 고른것돌리기(-90), "Q"], ["오른쪽으로 90° 돌리기", () => 고른것돌리기(90), "E"],
+  ]],
+  ["보기", [
+    ["평면 (2D)", () => 편집보기바꾸기("2D"), "2"], ["3D", () => 편집보기바꾸기("3D"), "3"], "-",
+    ["화면에 맞추기", () => 편집보기 === "2D" ? 평면전체() : 시점들.iso(), "Ctrl+0"],
+    ["확대", () => 평면확대(1.25), "Ctrl++"], ["축소", () => 평면확대(0.8), "Ctrl+−"],
+  ]],
+  ["정렬", [
+    ["왼쪽 맞춤", () => 정렬("왼쪽")], ["가로 가운데 맞춤", () => 정렬("가로가운데")], ["오른쪽 맞춤", () => 정렬("오른쪽")], "-",
+    ["위 맞춤", () => 정렬("위")], ["세로 가운데 맞춤", () => 정렬("세로가운데")], ["아래 맞춤", () => 정렬("아래")], "-",
+    ["가로 같은 간격", () => 정렬("가로간격")], ["세로 같은 간격", () => 정렬("세로간격")],
+  ]],
+];
+for (const [이름, 항목들] of 메뉴판) {
+  const 아래 = 엘("div", {class: "아래"});
+  for (const h of 항목들) {
+    if (h === "-") { 아래.append(엘("hr")); continue; }
+    아래.append(엘("div", {class: "항", onclick: () => { 메뉴닫기(); h[1](); }}, h[0], h[2] ? 엘("kbd", {textContent: h[2]}) : null));
+  }
+  const 메 = 엘("span", {class: "메뉴"}, 엘("button", {textContent: 이름, onclick: e => {
+    e.stopPropagation(); const 열 = !메.classList.contains("열림"); 메뉴닫기(); 메.classList.toggle("열림", 열); }}), 아래);
+  메.addEventListener("pointerenter", () => { if (document.querySelector(".메뉴.열림") && !메.classList.contains("열림")) { 메뉴닫기(); 메.classList.add("열림"); } });
+  $("menus").append(메);
+}
+function 메뉴닫기() { document.querySelectorAll(".메뉴.열림").forEach(m => m.classList.remove("열림")); }
+addEventListener("pointerdown", e => { if (!e.target.closest(".메뉴")) 메뉴닫기(); });
+
+/* ── 도구 막대 ── */
+const 도구단추 = new Map();
+for (const t of 도구들) {
+  const b = 엘("button", {textContent: t.글, title: `${t.설명} (${t.단축})`, onclick: () => 도구고르기(t.키)});
+  도구단추.set(t.키, b); $("tools").append(b);
+}
+$("tools").append(엘("div", {class: "칸"}),
+  엘("button", {class: "작", id: "b2d", textContent: "2D", title: "평면에서 고칩니다 (2)", onclick: () => 편집보기바꾸기("2D")}),
+  엘("button", {class: "작", id: "b3d", textContent: "3D", title: "3D 로 봅니다 (3)", onclick: () => 편집보기바꾸기("3D")}));
+function 도구고르기(키) {
+  도구 = 키; 자표시 = 키 === "자" ? 자표시 : null;
+  for (const [k, b] of 도구단추) b.classList.toggle("켬", k === 키);
+  옵션그리기(); 덧그리기(); 커서();
+}
+function 편집보기바꾸기(v) {
+  편집보기 = v;
+  $("b2d").classList.toggle("켬", v === "2D"); $("b3d").classList.toggle("켬", v === "3D");
+  controls.enabled = v === "3D";
+  if (v === "3D") {
+    const 범 = 고른.size ? 묶음가운데(고른항목()) : null;
+    if (범) 날기(V(범.x, 범.y, 0.6), Math.max(10, 지금거리() * 0.6)); else 시점들.iso();
+  }
+  더러움 = true; 커서();
+}
+
+/* ── 장비 라이브러리 ── */
+function 라이브러리그리기() {
+  const 안 = $("lib"); 안.replaceChildren();
+  for (const c of 분류목록) {
+    안.append(엘("div", {class: "묶음이름", textContent: c.이름}));
+    const 판 = 엘("div", {class: "타일들"});
+    for (const [키, k] of Object.entries(장비)) {
+      if (k.분류 !== c.키) continue;
+      const 치수 = `${Math.round(k.w * 1000)}×${Math.round(k.d * 1000)}×${Math.round(k.h * 1000)}`;
+      판.append(엘("div", {class: "타일", draggable: true, title: `${k.이름} — 폭×깊이×높이 ${치수} mm${k.z0 ? ` · 바닥에서 ${k.z0} m` : ""}`, "data-k": 키,
+        onclick: () => { 놓을종류 = 놓을종류 === 키 ? null : 키; 라이브러리켬(); 커서();
+          상태(놓을종류 ? `「${k.이름}」 을 놓을 자리를 누르세요 (Esc = 그만두기)` : ""); },
+        ondragstart: e => { e.dataTransfer.setData("text/fms-equip", 키); e.dataTransfer.effectAllowed = "copy"; }},
+        엘("span", {class: "견", style: `background:${색글(k.색)};color:${어두운가(k.색) ? "#fff" : "#333"}`, textContent: k.글자 || ""}),
+        엘("span", {class: "글"}, 엘("b", {textContent: k.이름}), 엘("span", {textContent: 치수}))));
+    }
+    안.append(판);
+  }
+}
+function 라이브러리켬() { document.querySelectorAll(".타일").forEach(t => t.classList.toggle("켬", t.dataset.k === 놓을종류)); }
+stage.addEventListener("dragover", e => { if (편집중 && e.dataTransfer.types.includes("text/fms-equip")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
+stage.addEventListener("drop", e => {
+  if (!편집중) return;
+  const 키 = e.dataTransfer.getData("text/fms-equip"); if (!장비[키]) return;
+  e.preventDefault();
+  const p = 편집점(e); if (p) 놓기(키, p);
+});
+
+/* ── 레이어 패널 ── */
+const 펼친층 = new Set();
+let 레이어예약 = false;
+function 레이어그리기() {
+  if (레이어예약) return; 레이어예약 = true;
+  requestAnimationFrame(() => {
+    레이어예약 = false;
+    const 안 = $("layers"); 안.replaceChildren();
+    for (const c of 분류목록) {
+      const 목록 = 모형.항목.filter(it => 분류(it) === c.키), s = 층[c.키];
+      안.append(엘("div", {class: "층"},
+        엘("button", {textContent: s.보임 ? "👁" : "—", title: s.보임 ? "숨기기" : "보이기", onclick: () => 층보임(c.키, !s.보임)}),
+        엘("button", {textContent: s.잠금 ? "🔒" : "🔓", title: s.잠금 ? "잠금 풀기" : "잠그기 — 잠근 것은 고를 수 없습니다",
+          onclick: () => { s.잠금 = !s.잠금; if (s.잠금) { for (const it of 목록) 고른.delete(it.id); 칠하기(); 고름바뀜(); } 레이어그리기(); }}),
+        엘("span", {class: "sw", style: "background:" + c.견}),
+        엘("span", {class: "이", textContent: (펼친층.has(c.키) ? "▾ " : "▸ ") + c.이름,
+          onclick: () => { 펼친층.has(c.키) ? 펼친층.delete(c.키) : 펼친층.add(c.키); 레이어그리기(); }}),
+        엘("span", {class: "수", textContent: 목록.length})));
+      if (!펼친층.has(c.키)) continue;
+      const 줄들 = 엘("div", {class: "층목록"});
+      for (const it of 목록.slice(0, 600)) {
+        줄들.append(엘("div", {class: 고른.has(it.id) ? "켬" : "", textContent: `${it.id} · ${it.이름 || 장비[it.종류].이름}${it.열 ? " · 열 " + it.열 : ""}`,
+          onclick: e => { if (!만질수있나(it)) { 상태("잠근 레이어입니다. 🔒 를 눌러 풀어 주세요"); return; }
+            if (e.shiftKey) { 고른.has(it.id) ? 고른.delete(it.id) : 고른.add(it.id); 칠하기(); 고름바뀜(); } else 고르기([it.id]); },
+          ondblclick: () => 보여주기([it.id])}));
+      }
+      if (목록.length > 600) 줄들.append(엘("div", {textContent: `… ${목록.length - 600}개 더 있습니다`}));
+      안.append(줄들);
+    }
+  });
+}
+function 보여주기(ids) {
+  if (편집보기 === "2D") {
+    const b = 묶음가운데(ids.map(id => 찾기id.get(id)));
+    평면.cx = b.x; 평면.cy = b.y; 평면.배율 = Math.max(평면.배율, 60); 평면맞추기();
+  } else 가까이(ids);
+}
+
+/* ── 속성 패널 ── */
+function 속성그리기() {
+  const 안 = $("props"); 안.replaceChildren();
+  const 목록 = 고른항목();
+  const 칸 = (이름, 값, 바꿈, 속 = {}) => [엘("span", {textContent: 이름}),
+    엘(속.여러줄 ? "textarea" : "input", {value: 값 ?? "", rows: 속.여러줄 ? 2 : null, type: 속.여러줄 ? null : 속.type || "text", step: 속.step, readOnly: !바꿈,
+      onchange: 바꿈 ? (e => 바꿈(e.target.value)) : null})];
+  if (!목록.length) {
+    const 수 = 모형.항목.length;
+    안.append(엘("div", {class: "속"},
+      ...칸("방 폭 (m)", 방().w, v => 방바꾸기("w", v), {type: "number", step: .1}),
+      ...칸("방 깊이 (m)", 방().d, v => 방바꾸기("d", v), {type: "number", step: .1}),
+      ...칸("천장 높이 (m)", 방().h, v => 방바꾸기("h", v), {type: "number", step: .1}),
+      엘("span", {textContent: "항목"}), 엘("b", {textContent: 수 + "개"})),
+      엘("div", {class: "묶음이름", textContent: "고르면 그 항목의 속성이 여기에 나옵니다."}));
+    return;
+  }
+  if (목록.length > 1) {
+    안.append(엘("div", {class: "묶음이름", textContent: `${목록.length}개를 골랐습니다. 위 옵션 막대·정렬 메뉴로 맞추거나, 여기서 한꺼번에 바꿉니다.`}),
+      엘("div", {class: "속"},
+        ...칸("높이 (m)", "", v => 모두바꾸기("h", v), {type: "number", step: .01}),
+        ...칸("바닥에서 (m)", "", v => 모두바꾸기("z0", v), {type: "number", step: .01}),
+        ...(목록.every(it => 분류(it) === "랙") ? 칸("열", "", v => 모두바꾸기("열", v)) : [])));
+    return;
+  }
+  const it = 목록[0], k = 장비[it.종류];
+  안.append(엘("div", {class: "속"},
+    ...칸("ID", it.id, v => 하나바꾸기(it, "id", v)),
+    ...칸("이름", it.이름, v => 하나바꾸기(it, "이름", v)),
+    ...칸("종류", k.이름, null),
+    ...칸("레이어", k.분류, null),
+    ...(k.분류 === "랙" ? 칸("열", it.열, v => 하나바꾸기(it, "열", v)) : []),
+    ...칸("FMS 센서 코드", it.점, v => 하나바꾸기(it, "점", v)),
+    ...칸("메모", it.메모, v => 하나바꾸기(it, "메모", v), {여러줄: true})),
+    엘("div", {class: "묶음이름", textContent: "FMS 센서 코드를 적어 두면 나중에 실시간 값·알람 색을 이 장비에 붙입니다."}));
+}
+function 방바꾸기(키, v) {
+  v = +v; if (!(v > 0.5)) { 상태("0.5 m 보다 커야 합니다"); 속성그리기(); return; }
+  방()[키] = v; 미니크기(); 게이지범위(); 빛맞추기(); 기록("방 크기"); 더러움 = true;
+}
+function 하나바꾸기(it, 키, v) {
+  v = v.trim();
+  if (키 === "id") {
+    if (!v) { 상태("ID 를 비울 수 없습니다"); 속성그리기(); return; }
+    if (v !== it.id && 찾기id.has(v)) { 상태(`같은 ID(${v})가 이미 있습니다`); 속성그리기(); return; }
+    const 옛 = it.id, m = 매시들.get(옛), s = 센서표.get(옛);
+    it.id = v; 매시들.delete(옛); if (m) 매시들.set(v, m);
+    if (s) { 센서표.delete(옛); 센서표.set(v, s); }
+    고른.delete(옛); 고른.add(v); 색인(); 매시맞추기(it);
+  } else if (v) it[키] = v; else delete it[키];
+  if (키 === "열") 덧붙이맞추기();
+  기록("속성 바꾸기");
+}
+function 모두바꾸기(키, v) {
+  const 목록 = 고른항목(); if (v === "") return;
+  for (const it of 목록) it[키] = 키 === "열" ? v.trim() : Math.max(키 === "h" ? .005 : -5, +v);
+  바꾼것맞추기(목록); 덧붙이맞추기(); 기록("속성 바꾸기");
+}
+
+/* ── 옵션 막대 ── */
+function 옵션그리기() {
+  const 바 = $("optbar"); 바.replaceChildren();
+  const t = 도구들.find(t => t.키 === 도구);
+  바.append(엘("span", {class: "도구이름", textContent: t.글 + " " + t.키}), 엘("span", {class: "칸"}));
+  const 목록 = 고른항목();
+  if (목록.length === 1 && (도구 === "이동" || 도구 === "회전" || 도구 === "사각")) {
+    const it = 목록[0];
+    const 수칸 = (이름, 키, 단위, step, 최소) => 엘("label", {}, 이름, 엘("input", {type: "number", step, value: (+it[키] || 0).toFixed(키 === "회전" ? 1 : 3), "data-k": 키,
+      onchange: e => { let v = +e.target.value; if (최소 != null) v = Math.max(최소, v);
+        it[키] = 키 === "회전" ? 각정리(v) : 둘째(v); 바꾼것맞추기([it]); 덧붙이맞추기(); 기록(이름 + " 바꾸기"); }}), 단위);
+    바.append(수칸("X", "x", "m", .01), 수칸("Y", "y", "m", .01), 수칸("폭", "w", "m", .01, .005), 수칸("깊이", "d", "m", .01, .005),
+      수칸("높이", "h", "m", .01, .005), 수칸("바닥에서", "z0", "m", .01), 수칸("회전", "회전", "°", 1), 엘("span", {class: "칸"}));
+  } else if (목록.length > 1) {
+    바.append(엘("span", {textContent: 목록.length + "개 고름"}), 엘("span", {class: "칸"}),
+      ...[["⇤", "왼쪽", "왼쪽 맞춤"], ["⇹", "가로가운데", "가로 가운데"], ["⇥", "오른쪽", "오른쪽 맞춤"],
+          ["⤒", "위", "위 맞춤"], ["⇳", "세로가운데", "세로 가운데"], ["⤓", "아래", "아래 맞춤"],
+          ["⋯", "가로간격", "가로 같은 간격"], ["⋮", "세로간격", "세로 같은 간격"]]
+        .map(([글, 방식, 설명]) => 엘("button", {textContent: 글, title: 설명, onclick: () => 정렬(방식)})),
+      엘("button", {textContent: "⟲ 90°", title: "왼쪽으로 90° (Q)", onclick: () => 고른것돌리기(-90)}),
+      엘("button", {textContent: "⟳ 90°", title: "오른쪽으로 90° (E)", onclick: () => 고른것돌리기(90)}),
+      엘("span", {class: "칸"}));
+  } else if (도구 === "자" && 자표시) {
+    const dx = 자표시.b.x - 자표시.a.x, dy = 자표시.b.y - 자표시.a.y;
+    바.append(엘("span", {textContent: `길이 ${Math.hypot(dx, dy).toFixed(3)} m · 가로 ${Math.abs(dx).toFixed(3)} m · 세로 ${Math.abs(dy).toFixed(3)} m · 각도 ${각정리(Math.atan2(dy, dx) * 180 / Math.PI).toFixed(1)}°`}),
+      엘("span", {class: "칸"}));
+  } else {
+    바.append(엘("span", {style: "color:var(--e-sub)", textContent: t.설명}), 엘("span", {class: "칸"}));
+  }
+  const 격 = 엘("select", {title: "옮기거나 놓을 때 맞출 칸 (Ctrl 을 누르고 끌면 잠시 끕니다)",
+    onchange: e => { 격자 = +e.target.value; 덧그리기(); }},
+    ...[[0.6, "바닥타일 600 mm"], [0.3, "300 mm"], [0.1, "100 mm"], [0.01, "10 mm"], [0, "끔"]].map(([v, 글]) => 엘("option", {value: v, textContent: 글, selected: v === 격자})));
+  바.append(엘("label", {}, "격자", 격));
+}
+function 옵션숫자맞추기() {
+  const it = 고른.size === 1 ? 찾기id.get([...고른][0]) : null; if (!it) return;
+  document.querySelectorAll("#optbar input[data-k]").forEach(inp => {
+    if (document.activeElement === inp) return;
+    const 키 = inp.dataset.k; inp.value = (+it[키] || 0).toFixed(키 === "회전" ? 1 : 3);
+  });
+}
+function 고름바뀜() { if (!편집중) return; 옵션그리기(); 속성그리기(); 레이어그리기(); 덧그리기(); }
+
+/* ── 작업 내역 패널 ── */
+function 내역그리기() {
+  $("hist").replaceChildren(...내역.목록.map((h, i) => 엘("div", {class: i === 내역.위치 ? "지금" : i > 내역.위치 ? "뒤" : "",
+    textContent: h.이름, onclick: () => 내역가기(i)})));
+  const 지금 = $("hist").querySelector(".지금"); if (지금) 지금.scrollIntoView({block: "nearest"});
+}
+for (const h of document.querySelectorAll(".판>h3")) h.addEventListener("click", () => h.parentElement.classList.toggle("접힘"));
+
+/* ── 상태줄 ── */
+let 커서평면 = null;
+let 상태타이머 = null;
+function 상태(말) {
+  상태말 = 말; 상태줄();
+  clearTimeout(상태타이머);
+  if (말 && !말.includes("Esc")) 상태타이머 = setTimeout(() => { 상태말 = ""; 상태줄(); }, 5000);
+}
+function 상태줄() {
+  if (!편집중) return;
+  const 배 = 편집보기 === "2D" ? `${평면.배율.toFixed(0)} px/m` : `거리 ${지금거리().toFixed(1)} m`;
+  $("status").replaceChildren(
+    엘("span", {}, "커서 ", 엘("b", {textContent: 커서평면 ? `X ${커서평면.x.toFixed(3)} · Y ${커서평면.y.toFixed(3)} m` : "—"})),
+    엘("span", {}, "배율 ", 엘("b", {textContent: 배})),
+    엘("span", {}, "고름 ", 엘("b", {textContent: `${고른.size} / ${모형.항목.length}`})),
+    엘("span", {textContent: 편집보기 === "2D" ? "평면 2D" : "3D"}),
+    엘("span", {class: "말", textContent: 상태말}));
+  $("saveState").textContent = 저장됨 ? "저장됨" : "● 저장 안 됨 (Ctrl+S)";
+}
+
+/* ── 평면(2D) 덧그림 — 격자·자·안내선·고른 것·손잡이·센서 표시 ── */
+const 손잡이크기 = 8;
+function 손잡이들(it) {
+  const c = Math.cos(라(it.회전 || 0)), s = Math.sin(라(it.회전 || 0)), 목록 = [];
+  const 점 = (lx, ly) => 평면에서화면(it.x + lx * c - ly * s, it.y + lx * s + ly * c);
+  for (const hx of [-1, 0, 1]) for (const hy of [-1, 0, 1]) {
+    if (!hx && !hy) continue;
+    목록.push({종류: "크기", hx, hy, xy: 점(hx * it.w / 2, hy * it.d / 2)});
+  }
+  const 위 = 점(0, -it.d / 2), 멀리 = 점(0, -it.d / 2 - 26 / 평면.배율);
+  목록.push({종류: "회전", xy: 멀리, 뿌리: 위});
+  return 목록;
+}
+function 손잡이찾기(sx, sy) {
+  if (고른.size !== 1) return null;
+  const it = 찾기id.get([...고른][0]); if (!it || !만질수있나(it)) return null;
+  for (const h of 손잡이들(it)) if (Math.abs(h.xy[0] - sx) <= 6 && Math.abs(h.xy[1] - sy) <= 6) return {...h, it};
+  return null;
+}
+function 항목찾기2D(p) {
+  const 순서 = ["센서", "랙", "공조", "전력", "건축", "바닥"];
+  const 여유 = 7 / 평면.배율;
+  for (const 분 of 순서) {
+    let 최고 = null, 넓이 = 1e9;
+    for (const it of 모형.항목) {
+      if (분류(it) !== 분 || !만질수있나(it)) continue;
+      if (!안쪽(it, p.x, p.y, 분 === "센서" ? 여유 : 0)) continue;
+      const a = it.w * it.d; if (a < 넓이) { 넓이 = a; 최고 = it; }
+    }
+    if (최고) return 최고;
+  }
+  return null;
+}
+function 그리기경로(it) {
+  og.beginPath(); 모서리(it).forEach(([x, y], i) => { const [a, b] = 평면에서화면(x, y); i ? og.lineTo(a, b) : og.moveTo(a, b); }); og.closePath();
+}
+function 덧그리기() {
+  og.clearRect(0, 0, W, H);
+  if (!편집중) return;
+  if (편집보기 === "3D") {
+    if (끌기 && 안내) 상태줄();
+    return;
+  }
+  const [rx0, ry0] = 평면에서화면(0, 0), [rx1, ry1] = 평면에서화면(방().w, 방().d);
+  // 방 테두리와 격자
+  og.strokeStyle = "rgba(0,155,222,.55)"; og.lineWidth = 1; og.setLineDash([6, 4]);
+  og.strokeRect(rx0, ry0, rx1 - rx0, ry1 - ry0); og.setLineDash([]);
+  if (격자 > 0 && 격자 * 평면.배율 >= 7) {
+    og.strokeStyle = "rgba(0,155,222,.13)"; og.beginPath();
+    for (let x = 0; x <= 방().w + 1e-6; x += 격자) { const [a] = 평면에서화면(x, 0); og.moveTo(a, ry0); og.lineTo(a, ry1); }
+    for (let y = 0; y <= 방().d + 1e-6; y += 격자) { const [, b] = 평면에서화면(0, y); og.moveTo(rx0, b); og.lineTo(rx1, b); }
+    og.stroke();
+  }
+  // 센서 표시 — 실물은 몇 cm 라 평면에서 안 보이므로 동그라미로 크게 표시한다
+  og.font = "bold 9px 'Malgun Gothic', sans-serif"; og.textAlign = "center"; og.textBaseline = "middle";
+  for (const it of 모형.항목) {
+    if (분류(it) !== "센서" || !보이나(it)) continue;
+    const k = 장비[it.종류];
+    if (it.종류 === "s_leak_line") {
+      og.strokeStyle = 색글(k.색); og.lineWidth = Math.max(3, it.d * 평면.배율); og.setLineDash([8, 4]);
+      const m = 모서리(it), [a, b] = 평면에서화면((m[0][0] + m[3][0]) / 2, (m[0][1] + m[3][1]) / 2), [c, d] = 평면에서화면((m[1][0] + m[2][0]) / 2, (m[1][1] + m[2][1]) / 2);
+      og.beginPath(); og.moveTo(a, b); og.lineTo(c, d); og.stroke(); og.setLineDash([]);
+      continue;
+    }
+    const [a, b] = 평면에서화면(it.x, it.y), r = Math.max(7, it.w * 평면.배율 / 2);
+    og.fillStyle = 색글(k.색); og.beginPath(); og.arc(a, b, r, 0, Math.PI * 2); og.fill();
+    og.strokeStyle = "#fff"; og.lineWidth = 1.5; og.stroke();
+    og.fillStyle = "#fff"; og.fillText(k.글자.slice(0, r < 9 && k.글자.length > 1 ? 1 : 2), a, b + .5);
+  }
+  // 이름 — 넉넉히 확대했을 때만
+  if (평면.배율 >= 40) {
+    og.font = "10px 'Malgun Gothic', sans-serif";
+    for (const it of 모형.항목) {
+      const 분 = 분류(it);
+      if (분 === "센서" || 분 === "바닥" || it.종류 === "wall" || !보이나(it) || Math.min(it.w, it.d) * 평면.배율 < 16) continue;
+      const [a, b] = 평면에서화면(it.x, it.y);
+      og.save(); og.translate(a, b); og.rotate(it.w < it.d ? 라((it.회전 || 0) + 90) : 라(it.회전 || 0));
+      og.fillStyle = 어두운가(장비[it.종류].색) ? "rgba(255,255,255,.9)" : "rgba(30,34,40,.85)"; og.fillText(it.id, 0, 0); og.restore();
+    }
+  }
+  // 마우스 아래
+  if (위에 && !고른.has(위에)) { const it = 찾기id.get(위에); if (it) { 그리기경로(it); og.strokeStyle = "rgba(245,158,11,.95)"; og.lineWidth = 2; og.stroke(); } }
+  // 고른 것
+  for (const id of 고른) {
+    const it = 찾기id.get(id); if (!it) continue;
+    그리기경로(it); og.strokeStyle = "#0b9be0"; og.lineWidth = 1.6; og.stroke();
+  }
+  if (고른.size === 1) {
+    const it = 찾기id.get([...고른][0]);
+    if (it && 만질수있나(it)) for (const h of 손잡이들(it)) {
+      og.fillStyle = "#fff"; og.strokeStyle = "#0b9be0"; og.lineWidth = 1.4;
+      if (h.종류 === "회전") {
+        og.beginPath(); og.moveTo(...h.뿌리); og.lineTo(...h.xy); og.stroke();
+        og.beginPath(); og.arc(h.xy[0], h.xy[1], 5, 0, Math.PI * 2); og.fill(); og.stroke();
+      } else { og.fillRect(h.xy[0] - 4, h.xy[1] - 4, 8, 8); og.strokeRect(h.xy[0] - 4, h.xy[1] - 4, 8, 8); }
+    }
+  } else if (고른.size > 1) {
+    const b = 묶음가운데(고른항목()), [a, c] = 평면에서화면(b.x0, b.y0), [d, e] = 평면에서화면(b.x1, b.y1);
+    og.setLineDash([4, 3]); og.strokeStyle = "#0b9be0"; og.lineWidth = 1; og.strokeRect(a - 3, c - 3, d - a + 6, e - c + 6); og.setLineDash([]);
+  }
+  // 스마트 안내선
+  if (안내) {
+    og.strokeStyle = "#ff2fd0"; og.lineWidth = 1;
+    og.beginPath();
+    if (안내.x != null) { const [a] = 평면에서화면(안내.x, 0); og.moveTo(a, 0); og.lineTo(a, H); }
+    if (안내.y != null) { const [, b] = 평면에서화면(0, 안내.y); og.moveTo(0, b); og.lineTo(W, b); }
+    og.stroke();
+  }
+  // 사각 선택
+  if (끌기 && 끌기.종류 === "사각") {
+    const [a, b] = 평면에서화면(끌기.시작.x, 끌기.시작.y), [c, d] = 평면에서화면(끌기.끝.x, 끌기.끝.y);
+    og.fillStyle = "rgba(11,155,224,.08)"; og.fillRect(a, b, c - a, d - b);
+    og.setLineDash([5, 4]); og.strokeStyle = "#0b9be0"; og.strokeRect(a, b, c - a, d - b); og.setLineDash([]);
+  }
+  // 벽 그리기 미리보기
+  if (끌기 && 끌기.종류 === "벽" && 끌기.끝) {
+    const [a, b] = 평면에서화면(끌기.시작.x, 끌기.시작.y), [c, d] = 평면에서화면(끌기.끝.x, 끌기.끝.y);
+    og.strokeStyle = "rgba(240,242,245,.9)"; og.lineWidth = Math.max(3, .2 * 평면.배율); og.beginPath(); og.moveTo(a, b); og.lineTo(c, d); og.stroke();
+    og.fillStyle = "#ffd166"; og.font = "12px 'Malgun Gothic', sans-serif";
+    og.fillText(Math.hypot(끌기.끝.x - 끌기.시작.x, 끌기.끝.y - 끌기.시작.y).toFixed(2) + " m", (a + c) / 2, (b + d) / 2 - 14);
+  }
+  // 자
+  if (자표시) {
+    const [a, b] = 평면에서화면(자표시.a.x, 자표시.a.y), [c, d] = 평면에서화면(자표시.b.x, 자표시.b.y);
+    og.strokeStyle = "#ffd166"; og.lineWidth = 1.5; og.beginPath(); og.moveTo(a, b); og.lineTo(c, d); og.stroke();
+    for (const [x, y] of [[a, b], [c, d]]) { og.beginPath(); og.arc(x, y, 3, 0, Math.PI * 2); og.fillStyle = "#ffd166"; og.fill(); }
+    og.font = "bold 12px 'Malgun Gothic', sans-serif"; og.fillStyle = "#ffd166";
+    og.fillText(Math.hypot(자표시.b.x - 자표시.a.x, 자표시.b.y - 자표시.a.y).toFixed(3) + " m", (a + c) / 2, (b + d) / 2 - 12);
+  }
+  자눈금();
+}
+/* 위·왼쪽 눈금자 (포토샵 눈금자처럼 m 단위) */
+function 자눈금() {
+  const 두께 = 18;
+  og.fillStyle = "#2b2f35"; og.fillRect(0, 0, W, 두께); og.fillRect(0, 0, 두께, H);
+  og.strokeStyle = "#7d8691"; og.fillStyle = "#c4cad1"; og.lineWidth = 1; og.font = "10px sans-serif";
+  const 걸음 = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20].find(s => s * 평면.배율 >= 40) || 50;
+  const 작은 = 걸음 / 5;
+  og.beginPath();
+  const p0 = 화면에서평면(0, 0), p1 = 화면에서평면(W, H);
+  og.textAlign = "left"; og.textBaseline = "top";
+  for (let x = Math.floor(p0.x / 작은) * 작은; x <= p1.x; x += 작은) {
+    const [a] = 평면에서화면(x, 0), 큰 = Math.abs(x / 걸음 - Math.round(x / 걸음)) < 1e-6;
+    og.moveTo(a + .5, 두께); og.lineTo(a + .5, 큰 ? 4 : 13);
+    if (큰 && a > 두께) og.fillText(+x.toFixed(2) + "", a + 2, 1);
+  }
+  for (let y = Math.floor(p0.y / 작은) * 작은; y <= p1.y; y += 작은) {
+    const [, b] = 평면에서화면(0, y), 큰 = Math.abs(y / 걸음 - Math.round(y / 걸음)) < 1e-6;
+    og.moveTo(두께, b + .5); og.lineTo(큰 ? 4 : 13, b + .5);
+    if (큰 && b > 두께) { og.save(); og.translate(2, b + 2); og.rotate(-Math.PI / 2); og.textAlign = "right"; og.fillText(+y.toFixed(2) + "", 0, 0); og.restore(); }
+  }
+  og.stroke();
+  if (커서평면) {
+    const [a, b] = 평면에서화면(커서평면.x, 커서평면.y);
+    og.strokeStyle = "#ffd166"; og.beginPath(); og.moveTo(a + .5, 0); og.lineTo(a + .5, 두께); og.moveTo(0, b + .5); og.lineTo(두께, b + .5); og.stroke();
+  }
+  og.fillStyle = "#2b2f35"; og.fillRect(0, 0, 두께, 두께);
+}
+function 커서(손잡이) {
+  if (!편집중) { cv.style.cursor = ""; return; }
+  let c = "default";
+  if (편집보기 === "3D") c = 놓을종류 ? "crosshair" : "";
+  else if (끌기 && 끌기.종류 === "손" || 스페이스 || 도구 === "손") c = 끌기 ? "grabbing" : "grab";
+  else if (놓을종류 || 도구 === "벽" || 도구 === "자" || 도구 === "사각") c = "crosshair";
+  else if (도구 === "돋보기") c = "zoom-in";
+  else if (손잡이) {
+    if (손잡이.종류 === "회전") c = "alias";
+    else {
+      const 각 = (Math.atan2(손잡이.hy, 손잡이.hx) * 180 / Math.PI + (손잡이.it.회전 || 0) + 360) % 180;
+      c = 각 < 22.5 || 각 >= 157.5 ? "ew-resize" : 각 < 67.5 ? "nwse-resize" : 각 < 112.5 ? "ns-resize" : "nesw-resize";
+    }
+  } else if (위에) c = 도구 === "회전" ? "alias" : "move";
+  cv.style.cursor = c;
+}
+
+/* ── 편집 마우스 ── */
+function 안내후보() {
+  const xs = [], ys = [];
+  for (const it of 모형.항목) {
+    if (고른.has(it.id) || !보이나(it) || 분류(it) === "바닥" || 분류(it) === "센서") continue;
+    const b = 범위(it); xs.push(b.x0, b.x1, (b.x0 + b.x1) / 2); ys.push(b.y0, b.y1, (b.y0 + b.y1) / 2);
+  }
+  return {xs, ys};
+}
+function 가장가까운(값들, 후보) {
+  let 최고 = null;
+  for (const v of 값들) for (const c of 후보) { const 차 = c - v; if (!최고 || Math.abs(차) < Math.abs(최고.차)) 최고 = {차, 값: c}; }
+  return 최고;
+}
+function 이동시작(p, 주) {
+  끌기 = {종류: "이동", 시작: p, 주: 주.id, 원본: new Map(고른항목().map(it => [it.id, {x: it.x, y: it.y}])), 후보: 안내후보(), 움직임: false};
+}
+function 이동중(p, e) {
+  let dx = p.x - 끌기.시작.x, dy = p.y - 끌기.시작.y;
+  if (!끌기.움직임 && Math.hypot(dx, dy) * (편집보기 === "2D" ? 평면.배율 : 40) < 3) return;
+  끌기.움직임 = true; 안내 = null;
+  const 주 = 찾기id.get(끌기.주), o = 끌기.원본.get(끌기.주);
+  if (!e.ctrlKey && 주) {
+    const b0 = 범위({...주, x: o.x + dx, y: o.y + dy});
+    const 허용 = 편집보기 === "2D" ? 6 / 평면.배율 : .06;
+    const sx = 가장가까운([b0.x0, b0.x1, (b0.x0 + b0.x1) / 2], 끌기.후보.xs);
+    const sy = 가장가까운([b0.y0, b0.y1, (b0.y0 + b0.y1) / 2], 끌기.후보.ys);
+    안내 = {};
+    if (sx && Math.abs(sx.차) <= 허용) { dx += sx.차; 안내.x = sx.값; } else if (격자 > 0) dx += 격자맞춤(b0.x0) - b0.x0;
+    if (sy && Math.abs(sy.차) <= 허용) { dy += sy.차; 안내.y = sy.값; } else if (격자 > 0) dy += 격자맞춤(b0.y0) - b0.y0;
+  }
+  const 목록 = [];
+  for (const [id, o2] of 끌기.원본) { const it = 찾기id.get(id); if (!it) continue; it.x = 둘째(o2.x + dx); it.y = 둘째(o2.y + dy); 목록.push(it); }
+  바꾼것맞추기(목록); 옵션숫자맞추기();
+}
+function 크기중(p, e) {
+  const {it, hx, hy, 원: o} = 끌기, c = Math.cos(라(o.회전 || 0)), s = Math.sin(라(o.회전 || 0));
+  const dx = p.x - o.x, dy = p.y - o.y, lx = dx * c + dy * s, ly = -dx * s + dy * c;
+  let nw = o.w, nd = o.d, cx = 0, cy = 0;
+  const 둥글게 = (v) => e.ctrlKey ? v : Math.round(v * 100) / 100;
+  if (hx) nw = Math.max(.02, 둥글게((lx + hx * o.w / 2) * hx));
+  if (hy) nd = Math.max(.02, 둥글게((ly + hy * o.d / 2) * hy));
+  if (e.shiftKey && hx && hy) { const k = Math.max(nw / o.w, nd / o.d); nw = 둥글게(o.w * k); nd = 둥글게(o.d * k); }
+  if (hx) cx = -hx * o.w / 2 + hx * nw / 2;
+  if (hy) cy = -hy * o.d / 2 + hy * nd / 2;
+  it.w = nw; it.d = nd; it.x = 둘째(o.x + cx * c - cy * s); it.y = 둘째(o.y + cx * s + cy * c);
+  바꾼것맞추기([it]); 옵션숫자맞추기();
+}
+function 회전중(p, e) {
+  let 도 = (Math.atan2(p.y - 끌기.중심.y, p.x - 끌기.중심.x) - 끌기.시작각) * 180 / Math.PI;
+  도 = e.shiftKey ? Math.round(도 / 15) * 15 : e.ctrlKey ? Math.round(도 * 10) / 10 : Math.round(도);
+  const 목록 = [...끌기.원본.keys()].map(id => 찾기id.get(id)).filter(Boolean);
+  돌려놓기(목록, 끌기.원본, 끌기.중심, 도); 끌기.도 = 도;
+  바꾼것맞추기(목록); 옵션숫자맞추기(); 상태(`회전 ${도}°`);
+}
+function 회전시작(p, 목록, 중심) {
+  끌기 = {종류: "회전", 중심, 시작각: Math.atan2(p.y - 중심.y, p.x - 중심.x), 도: 0,
+    원본: new Map(목록.map(it => [it.id, {x: it.x, y: it.y, 회전: it.회전 || 0}]))};
+}
+function 벽끝(p, e) {
+  let b = {x: p.x, y: p.y};
+  if (!e.ctrlKey && 격자 > 0) b = {x: 격자맞춤(b.x), y: 격자맞춤(b.y)};
+  if (e.shiftKey) {
+    const a = 끌기.시작, 각 = Math.round(Math.atan2(b.y - a.y, b.x - a.x) / (Math.PI / 4)) * Math.PI / 4, 길이 = Math.hypot(b.x - a.x, b.y - a.y);
+    b = {x: a.x + Math.cos(각) * 길이, y: a.y + Math.sin(각) * 길이};
+  }
+  return b;
+}
+
+stage.addEventListener("pointerdown", e => {
+  if (!편집중 || e.target !== cv) return;
+  메뉴닫기();
+  const p = 편집점(e);
+  if (편집보기 === "3D") {
+    if (e.button !== 0) return;
+    if (놓을종류) { if (p) 놓기(놓을종류, p); e.stopPropagation(); return; }
+    if (도구 !== "이동") return;
+    const it = 집기3D(화면좌표(e), true);
+    if (!it) { if (!e.shiftKey) 고르기([]); return; }       // 빈 곳 끌기는 시점 돌리기
+    controls.enabled = false;
+    if (e.shiftKey) { 고른.has(it.id) ? 고른.delete(it.id) : 고른.add(it.id); 칠하기(); 고름바뀜(); }
+    else if (!고른.has(it.id)) 고르기([it.id]);
+    if (고른.has(it.id) && p) 이동시작(p, it);
+    cv.setPointerCapture(e.pointerId);
+    return;
+  }
+  e.preventDefault(); cv.setPointerCapture(e.pointerId);
+  const {sx, sy} = 화면xy(e);
+  if (e.button === 1 || e.button === 2 || 스페이스 || 도구 === "손") { 끌기 = {종류: "손", sx, sy, cx: 평면.cx, cy: 평면.cy}; 커서(); return; }
+  if (e.button !== 0) return;
+  if (놓을종류) { 놓기(놓을종류, p); return; }
+  if (도구 === "돋보기") { 평면확대(e.altKey ? 1 / 1.5 : 1.5, sx, sy); return; }
+  if (도구 === "벽") { 끌기 = {종류: "벽", 시작: 격자 > 0 && !e.ctrlKey ? {x: 격자맞춤(p.x), y: 격자맞춤(p.y)} : p, 끝: null}; return; }
+  if (도구 === "자") { 끌기 = {종류: "자"}; 자표시 = {a: p, b: p}; 옵션그리기(); return; }
+  const 손 = 손잡이찾기(sx, sy);
+  if (손 && 도구 !== "사각") {
+    if (손.종류 === "회전") 회전시작(p, [손.it], {x: 손.it.x, y: 손.it.y});
+    else 끌기 = {종류: "크기", it: 손.it, hx: 손.hx, hy: 손.hy, 원: {...손.it}};
+    return;
+  }
+  const it = 도구 === "사각" ? null : 항목찾기2D(p);
+  if (it) {
+    if (e.shiftKey) { 고른.has(it.id) ? 고른.delete(it.id) : 고른.add(it.id); 칠하기(); 고름바뀜(); if (!고른.has(it.id)) return; }
+    else if (!고른.has(it.id)) 고르기([it.id]);
+    let 주 = it;
+    if (e.altKey) {           // Alt 끌기 = 복제해서 옮기기 (포토샵과 같다)
+      const 원래 = 고른항목();
+      const 새것 = 붙여넣기(원래, null, false);
+      주 = 새것[원래.findIndex(o => o.id === it.id)] || 새것[0];
+    }
+    if (도구 === "회전") { const 목록 = 고른항목(); 회전시작(p, 목록, 묶음가운데(목록)); }
+    else { 이동시작(p, 주); 끌기.복제 = e.altKey; }
+  } else {
+    if (!e.shiftKey) 고르기([]);
+    끌기 = {종류: "사각", 시작: p, 끝: p, 더하기: e.shiftKey};
+  }
+}, true);
+
+cv.addEventListener("pointermove", e => {
+  if (!편집중) return;
+  const p = 편집점(e); 커서평면 = p;
+  if (편집보기 === "3D") {
+    if (끌기 && 끌기.종류 === "이동" && p) 이동중(p, e);
+    else if (!끌기) { const it = 집기3D(화면좌표(e), true); const id = it ? it.id : null; if (id !== 위에) { 위에 = id; 칠하기(); } }
+    상태줄(); return;
+  }
+  const {sx, sy} = 화면xy(e);
+  if (끌기) {
+    if (끌기.종류 === "손") { 평면.cx = 끌기.cx - (sx - 끌기.sx) / 평면.배율; 평면.cy = 끌기.cy - (sy - 끌기.sy) / 평면.배율; 평면맞추기(); }
+    else if (끌기.종류 === "이동") 이동중(p, e);
+    else if (끌기.종류 === "크기") 크기중(p, e);
+    else if (끌기.종류 === "회전") 회전중(p, e);
+    else if (끌기.종류 === "사각") 끌기.끝 = p;
+    else if (끌기.종류 === "벽") 끌기.끝 = 벽끝(p, e);
+    else if (끌기.종류 === "자") { 자표시.b = p; 옵션그리기(); }
+  } else {
+    const 손 = 손잡이찾기(sx, sy);
+    const it = 손 ? null : 항목찾기2D(p), id = it ? it.id : null;
+    if (id !== 위에) { 위에 = id; 칠하기(); }
+    커서(손);
+  }
+  덧그리기(); 상태줄();
+});
+addEventListener("pointerup", e => {
+  if (!편집중 || !끌기) { if (편집중 && 편집보기 === "3D") controls.enabled = true; return; }
+  const k = 끌기; 끌기 = null; 안내 = null;
+  if (편집보기 === "3D") controls.enabled = true;
+  if (k.종류 === "이동") { if (k.움직임 || k.복제) { 덧붙이맞추기(); 기록(k.복제 ? "복제해서 옮기기" : "옮기기"); } else if (k.복제) 기록("복제"); }
+  else if (k.종류 === "크기") { 덧붙이맞추기(); 기록("크기 바꾸기"); }
+  else if (k.종류 === "회전") { if (k.도) { 덧붙이맞추기(); 기록(`${k.도}° 돌리기`); } }
+  else if (k.종류 === "사각") {
+    const x0 = Math.min(k.시작.x, k.끝.x), x1 = Math.max(k.시작.x, k.끝.x), y0 = Math.min(k.시작.y, k.끝.y), y1 = Math.max(k.시작.y, k.끝.y);
+    if (x1 - x0 > 1e-3 || y1 - y0 > 1e-3) {
+      const ids = 모형.항목.filter(it => { if (!만질수있나(it)) return false; const b = 범위(it); return b.x0 >= x0 && b.x1 <= x1 && b.y0 >= y0 && b.y1 <= y1; }).map(it => it.id);
+      고르기(ids, k.더하기);
+    }
+  } else if (k.종류 === "벽" && k.끝) {
+    const a = k.시작, b = k.끝, 길이 = Math.hypot(b.x - a.x, b.y - a.y);
+    if (길이 >= .05) {
+      층.건축.보임 = true; 층.건축.잠금 = false;
+      const it = 새항목("wall", (a.x + b.x) / 2, (a.y + b.y) / 2, {w: 둘째(길이), 회전: 각정리(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI)});
+      장면맞추기(); 고르기([it.id]); 기록("벽 그리기");
+    }
+  } else if (k.종류 === "손") 커서();
+  덧그리기(); 상태줄(); 옵션그리기();
+});
+cv.addEventListener("wheel", e => {
+  if (!편집중 || 편집보기 !== "2D") return;
+  e.preventDefault();
+  const {sx, sy} = 화면xy(e);
+  평면확대(e.deltaY > 0 ? 1 / 1.15 : 1.15, sx, sy); 덧그리기(); 상태줄();
+}, {passive: false});
+cv.addEventListener("dblclick", e => {
+  if (!편집중) return;
+  const it = 편집보기 === "2D" ? 항목찾기2D(편집점(e)) : 집기3D(화면좌표(e), true);
+  if (it && 편집보기 === "3D") 가까이([it.id]);
+});
+
+/* ── 키보드 ── */
+addEventListener("keydown", e => {
+  const 입력중 = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
+  const k = e.key.toLowerCase(), 컨 = e.ctrlKey || e.metaKey;
+  if (편집중) {
+    if (컨 && k === "s") { e.preventDefault(); e.shiftKey ? 내려받기() : 저장(); return; }
+    if (입력중) return;
+    if (컨) {
+      const 동 = {z: () => e.shiftKey ? 다시하기() : 되돌리기(), y: 다시하기, c: 복사, v: () => 붙여넣기(), j: 복제,
+        a: 모두고르기, d: () => 고르기([]), o: () => $("fileIn").click(), "0": () => 편집보기 === "2D" ? 평면전체() : 시점들.iso(),
+        "=": () => 평면확대(1.25), "+": () => 평면확대(1.25), "-": () => 평면확대(0.8)}[k];
+      if (동) { e.preventDefault(); 동(); 덧그리기(); 상태줄(); }
+      return;
+    }
+    if (k === " " && !스페이스) { 스페이스 = true; 커서(); e.preventDefault(); return; }
+    const 걸음 = e.shiftKey ? 0.1 : 0.01;
+    const 동 = {
+      arrowleft: () => 조금옮기기(-걸음, 0), arrowright: () => 조금옮기기(걸음, 0),
+      arrowup: () => 조금옮기기(0, -걸음), arrowdown: () => 조금옮기기(0, 걸음),
+      delete: 지우기, backspace: 지우기,
+      escape: () => { if (놓을종류) { 놓을종류 = null; 라이브러리켬(); 상태(""); } else if (끌기) 끌기 = null; else 자표시 = null; 커서(); },
+      q: () => 고른것돌리기(e.shiftKey ? -15 : -90), e: () => 고른것돌리기(e.shiftKey ? 15 : 90),
+      "2": () => 편집보기바꾸기("2D"), "3": () => 편집보기바꾸기("3D"),
+      ...Object.fromEntries(도구들.map(t => [t.단축.toLowerCase(), () => 도구고르기(t.키)])),
+    }[k];
+    if (동) { e.preventDefault(); 동(); 덧그리기(); 상태줄(); }
+    return;
+  }
+  if (입력중 || 컨 || e.altKey) return;
+  const 걸음 = 지금거리() * 0.08, {앞, 오른} = 앞오른쪽();
+  const 동작 = {
+    arrowup: () => 옮기기(앞.multiplyScalar(걸음)),    w: () => 옮기기(앞.multiplyScalar(걸음)),
+    arrowdown: () => 옮기기(앞.multiplyScalar(-걸음)), s: () => 옮기기(앞.multiplyScalar(-걸음)),
+    arrowleft: () => 옮기기(오른.multiplyScalar(-걸음)), a: () => 옮기기(오른.multiplyScalar(-걸음)),
+    arrowright: () => 옮기기(오른.multiplyScalar(걸음)), d: () => 옮기기(오른.multiplyScalar(걸음)),
+    q: () => 돌리기(0.12), e: () => 돌리기(-0.12),
+    "+": () => 확대(0.85), "=": () => 확대(0.85), "-": () => 확대(1.18), "_": () => 확대(1.18),
+    f: () => 가까이([...고른]), home: () => 시점들.iso(),
+  }[k];
+  if (!동작) return;
+  e.preventDefault(); 비행 = null; 동작();
+});
+addEventListener("keyup", e => { if (e.key === " ") { 스페이스 = false; 커서(); } });
+addEventListener("beforeunload", e => { if (!저장됨) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ── 모드 바꾸기 ── */
+function 모드(편집) {
+  편집중 = 편집;
+  document.body.classList.toggle("편집", 편집);
+  비행 = null; 끌기 = null; 위에 = null;
+  if (편집) {
+    편집보기 = "2D"; controls.enabled = false;
+    requestAnimationFrame(() => { 크기맞추기(); 평면전체(); 편집보기바꾸기("2D"); });
+    옵션그리기(); 레이어그리기(); 속성그리기(); 내역그리기(); 도구고르기(도구);
+  } else {
+    controls.enabled = true; 놓을종류 = null; 라이브러리켬();
+    층체크그리기(); 정보(); cv.style.cursor = "";
+    requestAnimationFrame(크기맞추기);
+  }
+  칠하기(); 더러움 = true;
+}
+$("toEdit").onclick = () => 모드(true);
+$("toView").onclick = () => 모드(false);
+
+/* ── 크기·돌기 ── */
+function 크기맞추기() {
+  W = Math.max(1, stage.clientWidth); H = Math.max(1, stage.clientHeight); DPR = Math.min(devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(DPR); renderer.setSize(W, H, false);
+  camera.aspect = W / H; camera.updateProjectionMatrix();
+  ov.width = Math.round(W * DPR); ov.height = Math.round(H * DPR); og.setTransform(DPR, 0, 0, DPR, 0, 0);
+  평면맞추기(); 덧그리기(); 더러움 = true;
+}
+new ResizeObserver(크기맞추기).observe(stage);
 크기맞추기();
-controls.target.copy(가운데);
-camera.position.copy(가운데).add(방향(0.16, 0.72).multiplyScalar(맞춤거리(전체반지름)));
+미니크기(); 게이지범위(); 라이브러리그리기(); 층체크그리기();
+장면맞추기();
+controls.target.copy(가운데());
+camera.position.copy(가운데()).add(방향(0.16, 0.72).multiplyScalar(맞춤거리(전체반지름())));
 controls.update();
+기록("열기"); 저장됨 = true;
 정보();
 
 function 돌기(now) {
   requestAnimationFrame(돌기);
   const 날았나 = 비행진행(now);
-  const 움직였나 = controls.update();
-  if (볼점 && !누름) {
-    const h = 집기(볼점); 볼점 = null;
-    if (!같은것(h, 위에)) { 위에 = h; cv.classList.toggle("over", !!h); 칠하기(); }
+  const 움직였나 = controls.enabled ? controls.update() : false;
+  if (볼점 && !누름 && !편집중) {
+    const it = 집기3D(볼점), id = it ? it.id : null; 볼점 = null;
+    if (id !== 위에) { 위에 = id; cv.classList.toggle("over", !!id); 칠하기(); }
   }
   if (날았나 || 움직였나 || 더러움) {
-    renderer.render(scene, camera); 미니맵(); 더러움 = false;
+    해.castShadow = !(편집중 && 편집보기 === "2D");      // 평면에서는 그림자가 자리를 헷갈리게 한다
+    renderer.render(scene, 지금카메라());
+    if (!편집중) { 미니맵(); 게이지맞추기(); } else if (편집보기 === "3D") 상태줄();
+    더러움 = false;
   }
 }
 requestAnimationFrame(돌기);
-window.__room3d = {camera, controls, 묶, 고른: () => 고른, 시점들, 날기};   // 시험용 손잡이
+/* 시험용 손잡이 */
+window.__room3d = {camera, controls, 고른: () => [...고른], 모형: () => 모형, 시점들, 날기, 나는중: () => !!비행, 모드, 편집보기바꾸기, 평면,
+  평면에서화면, 내역: () => 내역.목록.map(h => h.이름), 저장됨: () => 저장됨,
+  화면: (id) => { const it = 찾기id.get(id); const p = V(it.x, it.y, (it.z0 || 0) + 보이는높이(it)).project(지금카메라());
+    const r = stage.getBoundingClientRect(); return {x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height}; }};
 </script>
 </body>
 </html>

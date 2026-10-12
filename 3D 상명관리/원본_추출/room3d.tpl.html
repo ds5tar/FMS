@@ -1,0 +1,458 @@
+<!doctype html>
+<!-- 전산실 3차원 컷어웨이 뷰 — 평면도에서 뽑은 좌표를 세운다 (외부 의존 0건) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>전산실 3D — 랙 291대 · 항온항습기 28대</title>
+<style>
+  :root{ --ink:#1c2126; --sub:#5b6672; --line:#d3d8de; --panel:#ffffffee; }
+  html,body{margin:0;height:100%;overflow:hidden;background:#fff;
+    font:13px/1.55 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;color:var(--ink)}
+  canvas{display:block;cursor:grab}
+  canvas.drag{cursor:grabbing}
+  #ui,#info{position:fixed;background:var(--panel);border:1px solid var(--line);
+    border-radius:9px;padding:12px 14px;box-shadow:0 3px 18px #0001;min-width:214px}
+  #ui{top:14px;left:14px}
+  #info{bottom:14px;left:14px}
+  #ui h1{margin:0 0 2px;font-size:14px}
+  #ui .sub{color:var(--sub);font-size:11.5px;margin-bottom:9px}
+  #ui label{display:flex;align-items:center;gap:7px;padding:2px 0;cursor:pointer}
+  #ui hr{border:0;border-top:1px solid var(--line);margin:9px 0}
+  .sw{width:12px;height:12px;border-radius:2px;border:1px solid #0003}
+  #info b{font-size:13px}
+  #info .k{color:var(--sub);display:inline-block;min-width:52px}
+  #help{position:fixed;bottom:14px;right:14px;color:var(--sub);font-size:11.5px;
+    text-align:right;background:var(--panel);border:1px solid var(--line);
+    border-radius:9px;padding:9px 12px}
+  button{font:inherit;padding:3px 9px;border:1px solid var(--line);
+    background:#fff;border-radius:6px;cursor:pointer}
+  button:hover{background:#f3f5f7}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="ui">
+  <h1>전산실 3D</h1>
+  <div class="sub">평면도에서 뽑은 좌표 · 바닥타일 600 mm</div>
+  <label><input type="checkbox" id="t_rack" checked><span class="sw" style="background:#4b525c"></span>랙 <span id="n_rack"></span></label>
+  <label><input type="checkbox" id="t_ac" checked><span class="sw" style="background:#e9ecef"></span>항온항습기 <span id="n_ac"></span></label>
+  <label><input type="checkbox" id="t_col" checked><span class="sw" style="background:#23262b"></span>기둥 <span id="n_col"></span></label>
+  <label><input type="checkbox" id="t_wall" checked><span class="sw" style="background:#f2f3f5"></span>벽</label>
+  <label><input type="checkbox" id="t_floor" checked><span class="sw" style="background:#e7e9eb"></span>바닥 · 타일선</label>
+  <hr>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <button id="v_iso">비스듬히</button>
+    <button id="v_top">위에서</button>
+    <button id="v_eye">통로에서</button>
+  </div>
+  <label style="margin-top:7px"><input type="checkbox" id="t_wallhi">벽을 전체 높이로 (3.6 m)</label>
+</div>
+
+<div id="info"><b>객체를 누르면 정보가 나옵니다</b></div>
+<div id="help">끌기 = 회전 · 휠 = 확대 · Shift+끌기 = 이동</div>
+
+<script>
+"use strict";
+/* 평면도에서 뽑은 좌표. 배열 한 줄이 사전보다 작아서 이렇게 담았다.
+   rack  [id, 열, x, y, w, d, h]
+   ac·col[id, x, y, w, d, h]
+   wall  [x, y, w, d, h]
+   floor [x, y, w, d]                                    단위는 전부 m */
+const S = __SCENE__;
+
+/* ── 재질 ────────────────────────────────────────────────────────────
+   기준색 하나를 두고 면마다 빛을 계산해 밝기를 바꾼다. 면마다 색을
+   손으로 정하면 시점을 돌렸을 때 빛의 방향이 어긋나 보인다.          */
+const 재질 = {
+  rack : {rgb:[ 74, 81, 92], 이름:"랙",         칸:1},
+  ac   : {rgb:[242,244,247], 이름:"항온항습기"},
+  col  : {rgb:[ 38, 42, 48], 이름:"기둥"},
+  wall : {rgb:[249,250,251], 이름:"벽"},
+  floor: {rgb:[232,234,236], 이름:"바닥"},
+};
+/* 빛은 왼쪽 위 뒤에서 온다. 단위 벡터로 둔다. */
+const 빛 = (() => { const v = [-0.42, -0.55, 0.72];
+  const n = Math.hypot(...v); return v.map(c => c/n); })();
+const 환경 = 0.52;                     // 그늘진 면도 이만큼은 밝다
+
+function 색(rgb, 법선, 배 = 1) {
+  const d = Math.max(0, 빛[0]*법선[0] + 빛[1]*법선[1] + 빛[2]*법선[2]);
+  const k = (환경 + (1 - 환경) * d) * 배;
+  return "rgb(" + rgb.map(c => Math.min(255, Math.round(c*k))).join(",") + ")";
+}
+
+/* ── 상자 목록 ───────────────────────────────────────────────────── */
+const 상자 = [];
+function 넣기(종류, id, 이름, x, y, w, d, z0, h) {
+  상자.push({종류, id, 이름, x, y, w, d, z0, h,
+             cx:x+w/2, cy:y+d/2, cz:z0+h/2});
+  return 상자[상자.length-1];
+}
+S.rack.forEach(r => 넣기("rack", r[0], "열 "+r[1], r[2],r[3],r[4],r[5], 0, r[6]));
+S.ac  .forEach(r => 넣기("ac",   r[0], "항온항습기", r[1],r[2],r[3],r[4], 0, r[5]));
+S.col .forEach(r => 넣기("col",  r[0], "구조 기둥",  r[1],r[2],r[3],r[4], 0, r[5]));
+
+/* **벽을 기본으로 잘라 세운다 (1.2 m).**
+   실제 3.6 m 로 세우면 벽 뒤가 안 보인다 — 특히 가운데를 가로지르는
+   칸막이벽이 랙을 통째로 가린다. 평면도를 3D 로 볼 때 흔히 쓰는 방법이
+   허리 높이로 자르는 것이다. 전체 높이는 단추로 켠다. */
+const 벽높이 = {자름:1.2, 전체:3.6};
+const 벽상자 = [];
+S.wall.forEach(r => 벽상자.push(
+  넣기("wall", "", "벽", r[0], r[1], r[2], r[3], 0, 벽높이.자름)));
+
+/* 바닥은 판 하나로. 두께가 없으면 옆면이 사라져 단이 안 보인다. */
+const 바닥 = S.floor.map(r =>
+  넣기("floor", "", "바닥", r[0], r[1], r[2], r[3], -0.15, 0.15));
+
+document.getElementById("n_rack").textContent = S.rack.length + "대";
+document.getElementById("n_ac").textContent   = S.ac.length + "대";
+document.getElementById("n_col").textContent  = S.col.length + "개";
+
+/* ── 카메라 ─────────────────────────────────────────────────────── */
+const 방 = {w:S.room[0], d:S.room[1]};
+const cam = {az:-0.16, el:0.52, dist:52,
+             tx:방.w/2, ty:방.d/2, tz:1.0, f:4.5, ox:0, oy:0};
+
+const cv = document.getElementById("cv"), g = cv.getContext("2d");
+let DPR = 1, Wpx = 0, Hpx = 0;
+
+function 투영(x, y, z) {
+  const dx = x - cam.tx, dy = y - cam.ty, dz = z - cam.tz;
+  const ca = Math.cos(cam.az), sa = Math.sin(cam.az);
+  const X =  dx*ca + dy*sa;
+  const Y = -dx*sa + dy*ca;
+  const ce = Math.cos(cam.el), se = Math.sin(cam.el);
+  const Z =  dz*ce - Y*se;
+  const D =  Y*ce + dz*se + cam.dist;
+  if (D < 0.35) return null;
+  const s = (Hpx * cam.f) / D;
+  return {sx: Wpx/2 + cam.ox + X*s, sy: Hpx/2 + cam.oy - Z*s, D};
+}
+function 카메라위치() {
+  const ce = Math.cos(cam.el), se = Math.sin(cam.el);
+  const ca = Math.cos(cam.az), sa = Math.sin(cam.az);
+  const Y = -cam.dist*ce;
+  return {x: cam.tx - Y*sa, y: cam.ty + Y*ca, z: cam.tz + cam.dist*se};
+}
+
+/* 보이는 면만 낸다. 축에 나란한 상자라 면 방향이 뻔하다. */
+function 면들(b) {
+  const {x, y, z0, w, d, h} = b, x1 = x+w, y1 = y+d, z1 = z0+h;
+  const P = 투영;
+  const v = {a:P(x,y,z0), b:P(x1,y,z0), c:P(x1,y1,z0), e:P(x,y1,z0),
+             A:P(x,y,z1), B:P(x1,y,z1), C:P(x1,y1,z1), E:P(x,y1,z1)};
+  for (const k in v) if (!v[k]) return null;
+  const 눈 = 카메라위치(), out = [];
+  if (눈.z > z1) out.push({q:[v.A,v.B,v.C,v.E], n:[0,0,1],  윗면:1});
+  if (눈.y < y ) out.push({q:[v.a,v.b,v.B,v.A], n:[0,-1,0], 앞:1});
+  if (눈.y > y1) out.push({q:[v.e,v.c,v.C,v.E], n:[0,1,0],  앞:1});
+  if (눈.x < x ) out.push({q:[v.a,v.e,v.E,v.A], n:[-1,0,0]});
+  if (눈.x > x1) out.push({q:[v.b,v.c,v.C,v.B], n:[1,0,0]});
+  return out;
+}
+
+function 다각형(q) {
+  g.beginPath();
+  g.moveTo(q[0].sx, q[0].sy);
+  for (let i = 1; i < q.length; i++) g.lineTo(q[i].sx, q[i].sy);
+  g.closePath();
+}
+const 섞기 = (p, q, t) => ({sx: p.sx + (q.sx-p.sx)*t,
+                            sy: p.sy + (q.sy-p.sy)*t});
+
+let 고른것 = null, 위에 = null;
+const 보임 = {rack:1, ac:1, col:1, wall:1, floor:1};
+let 화면상자 = [];
+
+function 그리기() {
+  g.setTransform(1,0,0,1,0,0);
+  g.fillStyle = "#ffffff"; g.fillRect(0,0,Wpx,Hpx);
+  g.lineJoin = "round";
+  const 선굵기 = Math.max(0.7, 0.85*DPR);
+
+  const 보이는 = 상자.filter(b => 보임[b.종류]);
+  const 바닥들 = [], 물체 = [];
+  for (const b of 보이는) {
+    const c = 투영(b.cx, b.cy, b.cz);
+    if (!c) continue;
+    (b.종류 === "floor" ? 바닥들 : 물체).push({b, D:c.D});
+  }
+  바닥들.sort((p,q) => q.D - p.D);
+  물체.sort((p,q) => q.D - p.D);
+
+  /* ① 건물 아래 그림자 — 흰 배경에 모형이 떠 있어 보이게 한다.
+        바닥 발자국을 살짝 내려 옅게 한 번 깐다. */
+  if (바닥들.length) {
+    g.fillStyle = "rgba(23,28,35,.10)";
+    g.beginPath();
+    for (const {b} of 바닥들) {
+      const q = [투영(b.x,b.y,b.z0), 투영(b.x+b.w,b.y,b.z0),
+                 투영(b.x+b.w,b.y+b.d,b.z0), 투영(b.x,b.y+b.d,b.z0)];
+      if (q.some(p => !p)) continue;
+      g.moveTo(q[0].sx, q[0].sy + 16);
+      for (let i = 1; i < 4; i++) g.lineTo(q[i].sx, q[i].sy + 16);
+      g.closePath();
+    }
+    g.fill();
+  }
+
+  /* ② 바닥 + 600 mm 타일선
+        **윗면만 그린다.** 바닥은 107조각인데 조각마다 옆면과 테두리를
+        그리면 바닥 전체가 격자 모양 둔덕으로 뒤덮인다 — 실제로 그렇게
+        나왔다. 바닥의 경계는 어차피 벽이 보여 준다. */
+  for (const {b} of 바닥들) {
+    const z = b.z0 + b.h;
+    const q = [투영(b.x,b.y,z), 투영(b.x+b.w,b.y,z),
+               투영(b.x+b.w,b.y+b.d,z), 투영(b.x,b.y+b.d,z)];
+    if (q.some(p => !p)) continue;
+    다각형(q); g.fillStyle = 색(재질.floor.rgb, [0,0,1]); g.fill();
+    타일선(b);
+  }
+
+  /* ③ 접지 그림자 — 물체마다 바닥에 발자국을 옮겨 찍는다.
+        하나의 경로로 모아 한 번에 채운다. 따로 채우면 겹친 자리가
+        점점 짙어져 얼룩이 된다. */
+  g.fillStyle = "rgba(28,34,42,.20)";
+  g.beginPath();
+  let 찍었나 = false;
+  for (const {b} of 물체) {
+    if (b.종류 === "wall") continue;
+    const 밀기 = b.h * 0.30;                       // 빛 방향으로 눕힌다
+    const ox = 밀기 * -빛[0], oy = 밀기 * -빛[1];
+    const q = [투영(b.x+ox, b.y+oy, 0.005),
+               투영(b.x+b.w+ox, b.y+oy, 0.005),
+               투영(b.x+b.w+ox, b.y+b.d+oy, 0.005),
+               투영(b.x+ox, b.y+b.d+oy, 0.005)];
+    if (q.some(p => !p)) continue;
+    g.moveTo(q[0].sx, q[0].sy);
+    for (let i = 1; i < 4; i++) g.lineTo(q[i].sx, q[i].sy);
+    g.closePath(); 찍었나 = true;
+  }
+  if (찍었나) g.fill();
+
+  /* ④ 물체 */
+  화면상자 = [];
+  for (const {b} of 물체) {
+    const fs = 면들(b);
+    if (!fs) continue;
+    const m = 재질[b.종류];
+    const 강조 = (고른것 === b) ? 1.0 : (위에 === b ? 0.55 : 0);
+    let x0=1e9, y0=1e9, x1=-1e9, y1=-1e9;
+    for (const f of fs) {
+      다각형(f.q);
+      g.fillStyle = 강조
+        ? 색(강조 > 0.8 ? [217,119,6] : [245,158,11], f.n)
+        : 색(m.rgb, f.n);
+      g.fill();
+      g.strokeStyle = "rgba(28,34,42,.30)";
+      g.lineWidth = 선굵기; g.stroke();
+      if (m.칸 && f.앞 && !강조) 랙칸(f.q, b.h);
+      for (const p of f.q) {
+        if (p.sx<x0) x0=p.sx; if (p.sx>x1) x1=p.sx;
+        if (p.sy<y0) y0=p.sy; if (p.sy>y1) y1=p.sy;
+      }
+    }
+    if (b.종류 !== "wall") 화면상자.push({b, x0, y0, x1, y1, 면:fs});
+  }
+}
+
+/* 바닥 한 조각 위에 600 mm 타일선을 긋는다. 조각 안에서만 그으므로
+   따로 잘라낼 필요가 없다. */
+function 타일선(b) {
+  if (cam.dist > 220) return;                 // 멀면 뭉개진다
+  g.strokeStyle = "rgba(70,82,98,.13)";
+  g.lineWidth = Math.max(0.5, 0.6*DPR);
+  g.beginPath();
+  const z = b.z0 + b.h;
+  for (let x = b.x + 0.6; x < b.x + b.w - 1e-6; x += 0.6) {
+    const p = 투영(x, b.y, z), q = 투영(x, b.y + b.d, z);
+    if (p && q) { g.moveTo(p.sx, p.sy); g.lineTo(q.sx, q.sy); }
+  }
+  for (let y = b.y + 0.6; y < b.y + b.d - 1e-6; y += 0.6) {
+    const p = 투영(b.x, y, z), q = 투영(b.x + b.w, y, z);
+    if (p && q) { g.moveTo(p.sx, p.sy); g.lineTo(q.sx, q.sy); }
+  }
+  g.stroke();
+}
+
+/* 랙 앞면에 U 단과 문틀을 그린다. 밋밋한 상자와 랙을 눈으로 가른다. */
+function 랙칸(q, h) {
+  const [p0, p1, p2, p3] = q;            // 아래 두 점, 위 두 점
+  g.strokeStyle = "rgba(12,16,22,.30)";
+  g.lineWidth = Math.max(0.5, 0.55*DPR);
+  g.beginPath();
+  const 칸수 = 6;
+  for (let i = 1; i < 칸수; i++) {
+    const t = i / 칸수;
+    const a = 섞기(p0, p3, t), b = 섞기(p1, p2, t);
+    g.moveTo(a.sx, a.sy); g.lineTo(b.sx, b.sy);
+  }
+  g.stroke();
+}
+
+/* ── 화면에 꽉 차게 맞추기 ─────────────────────────────────────────
+   거리를 눈대중으로 박아 두면 창이나 방 크기가 달라질 때 모형이 구석에
+   조그맣게 뜬다. 모서리를 실제로 투영해 재고 거리와 위치를 고친다. */
+function 자동맞춤(여백) {
+  여백 = 여백 || 0.90;
+  const 꼭 = [];
+  for (const b of 상자) {
+    if (!보임[b.종류]) continue;
+    for (const X of [b.x, b.x+b.w])
+      for (const Y of [b.y, b.y+b.d])
+        for (const Z of [b.z0, b.z0+b.h]) 꼭.push([X,Y,Z]);
+  }
+  if (!꼭.length) return;
+  const 재기 = () => {
+    let x0=1e9, y0=1e9, x1=-1e9, y1=-1e9;
+    for (const [X,Y,Z] of 꼭) {
+      const p = 투영(X,Y,Z); if (!p) continue;
+      if (p.sx<x0) x0=p.sx; if (p.sx>x1) x1=p.sx;
+      if (p.sy<y0) y0=p.sy; if (p.sy>y1) y1=p.sy;
+    }
+    return [x0,y0,x1,y1];
+  };
+  for (let 회 = 0; 회 < 3; 회++) {
+    cam.ox = 0; cam.oy = 0;
+    const [x0,y0,x1,y1] = 재기();
+    if (x1 <= x0) return;
+    cam.dist = Math.max(3, cam.dist / Math.min(Wpx*여백/(x1-x0),
+                                               Hpx*여백/(y1-y0)));
+  }
+  cam.ox = 0; cam.oy = 0;
+  const [x0,y0,x1,y1] = 재기();
+  cam.ox = Wpx/2 - (x0+x1)/2;
+  cam.oy = Hpx/2 - (y0+y1)/2;
+}
+
+function 크기맞추기() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  Wpx = cv.width  = Math.floor(innerWidth  * DPR);
+  Hpx = cv.height = Math.floor(innerHeight * DPR);
+  cv.style.width = innerWidth + "px"; cv.style.height = innerHeight + "px";
+  자동맞춤(); 그리기();
+}
+addEventListener("resize", 크기맞추기);
+
+/* ── 집기 ────────────────────────────────────────────────────────── */
+function 집기(mx, my) {
+  for (let i = 화면상자.length - 1; i >= 0; i--) {
+    const s = 화면상자[i];
+    if (mx < s.x0 || mx > s.x1 || my < s.y0 || my > s.y1) continue;
+    for (const f of s.면) if (다각형안(mx, my, f.q)) return s.b;
+  }
+  return null;
+}
+function 다각형안(x, y, p) {
+  let 안 = false;
+  for (let i = 0, j = p.length-1; i < p.length; j = i++) {
+    if ((p[i].sy > y) !== (p[j].sy > y) &&
+        x < (p[j].sx-p[i].sx)*(y-p[i].sy)/(p[j].sy-p[i].sy)+p[i].sx) 안 = !안;
+  }
+  return 안;
+}
+
+/* ── 조작 ────────────────────────────────────────────────────────── */
+let 끄는중 = false, 이동중 = false, 눌렀나 = false, lx = 0, ly = 0;
+cv.addEventListener("pointerdown", e => {
+  끄는중 = true; 눌렀나 = true; 이동중 = e.shiftKey || e.button === 2;
+  lx = e.clientX; ly = e.clientY;
+  cv.setPointerCapture(e.pointerId); cv.classList.add("drag");
+});
+cv.addEventListener("pointermove", e => {
+  const mx = e.clientX*DPR, my = e.clientY*DPR;
+  if (!끄는중) {
+    const h = 집기(mx, my);
+    if (h !== 위에) { 위에 = h; 그리기(); }
+    return;
+  }
+  const dx = e.clientX - lx, dy = e.clientY - ly;
+  if (Math.abs(dx) + Math.abs(dy) > 3) 눌렀나 = false;
+  lx = e.clientX; ly = e.clientY;
+  if (이동중) {
+    const k = cam.dist / (900 * cam.f);
+    const ca = Math.cos(cam.az), sa = Math.sin(cam.az);
+    cam.tx -= (dx*ca - dy*sa*0.8) * k;
+    cam.ty -= (dx*sa + dy*ca*0.8) * k;
+  } else {
+    cam.az -= dx * 0.006;
+    cam.el = Math.max(0.04, Math.min(1.52, cam.el + dy * 0.005));
+  }
+  그리기();
+});
+cv.addEventListener("pointerup", e => {
+  끄는중 = false; cv.classList.remove("drag");
+  if (눌렀나) { 고른것 = 집기(e.clientX*DPR, e.clientY*DPR); 정보(); 그리기(); }
+});
+cv.addEventListener("contextmenu", e => e.preventDefault());
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  cam.dist = Math.max(3, Math.min(200, cam.dist * (e.deltaY > 0 ? 1.12 : 0.893)));
+  그리기();
+}, {passive:false});
+
+for (const [id, key] of [["t_rack","rack"],["t_ac","ac"],["t_col","col"],
+                         ["t_wall","wall"],["t_floor","floor"]])
+  document.getElementById(id).addEventListener("change", e => {
+    보임[key] = e.target.checked ? 1 : 0; 그리기();
+  });
+
+document.getElementById("t_wallhi").addEventListener("change", e => {
+  const h = e.target.checked ? 벽높이.전체 : 벽높이.자름;
+  for (const b of 벽상자) { b.h = h; b.cz = b.z0 + h/2; }
+  그리기();
+});
+
+document.getElementById("v_iso").onclick = () => {
+  cam.az = -0.16; cam.el = 0.52; cam.f = 4.5;
+  cam.tx = 방.w/2; cam.ty = 방.d/2; cam.tz = 1.0;
+  자동맞춤(); 그리기(); };
+document.getElementById("v_top").onclick = () => {
+  cam.az = 0; cam.el = 1.50; cam.f = 4.5;
+  cam.tx = 방.w/2; cam.ty = 방.d/2; cam.tz = 1.0;
+  자동맞춤(); 그리기(); };
+document.getElementById("v_eye").onclick = () => {
+  /* **사람이 통로에 서 있는 자리로 간다.**
+     방 한가운데를 목표로 잡고 거리를 두면 카메라가 방 밖으로 나가서
+     바깥벽만 화면에 꽉 찬다 — 실제로 그렇게 나왔다. 랙 사이 통로를
+     골라 그 안에 세우고 통로를 따라 보게 한다. 자동맞춤은 안 쓴다. */
+  cam.az = 0; cam.el = 0.06; cam.dist = 11; cam.f = 1.1;
+  cam.tx = 랙통로(); cam.ty = 방.d * 0.60; cam.tz = 1.5;
+  cam.ox = 0; cam.oy = 0; 그리기(); };
+
+function 랙통로() {
+  const 열 = [];
+  for (const r of S.rack) {
+    const a0 = r[2], a1 = r[2] + r[4];
+    const 같은것 = 열.find(e => a0 < e.x1 + 0.05 && a1 > e.x0 - 0.05);
+    if (같은것) { 같은것.x0 = Math.min(같은것.x0, a0);
+                  같은것.x1 = Math.max(같은것.x1, a1); }
+    else 열.push({x0:a0, x1:a1});
+  }
+  열.sort((p,q) => p.x0 - q.x0);
+  let 최대 = 0, 가운데 = 방.w/2;
+  for (let i = 1; i < 열.length; i++) {
+    const 폭 = 열[i].x0 - 열[i-1].x1;
+    if (폭 > 최대) { 최대 = 폭; 가운데 = (열[i].x0 + 열[i-1].x1) / 2; }
+  }
+  return 가운데;
+}
+
+function 정보() {
+  const el = document.getElementById("info");
+  if (!고른것) { el.innerHTML = "<b>객체를 누르면 정보가 나옵니다</b>"; return; }
+  const b = 고른것, 이름 = 재질[b.종류].이름;
+  const 줄 = (k, v) => `<div><span class="k">${k}</span>${v}</div>`;
+  el.innerHTML =
+    `<b>${b.id || 이름}</b> <span style="color:var(--sub)">${이름}</span>` +
+    (b.이름 && b.id ? 줄("구분", b.이름) : "") +
+    줄("위치", `X ${b.x.toFixed(2)} m · Y ${b.y.toFixed(2)} m`) +
+    줄("크기", `${b.w.toFixed(2)} × ${b.d.toFixed(2)} × ${b.h.toFixed(2)} m`);
+}
+
+크기맞추기();
+</script>
+</body>
+</html>
