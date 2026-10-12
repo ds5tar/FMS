@@ -1,0 +1,10 @@
+Three.js r185 (npm 0.185.1) — 폐쇄망용으로 미리 받아 둔 사본
+출처  https://github.com/mrdoob/three.js  태그 r185 (커밋 2431a09f46f34c560bc8e44b33be0e567723d5b9, 2026-07-01)
+라이선스  MIT (LICENSE)
+쓰는 곳  60_monitor_ui/static/room3d.html (importmap 으로 불러옴)
+받은 날  2026-10-12
+
+sha256
+86bcee248b64f44bcfc23c331ae74619061957d59cab040171dcb6fb5900beb6  three.module.min.js
+05b2609338c76cd65daf74f3ac515bc9a5045e1b3b33edc07d8c9bd55250fa90  three.core.min.js
+faabb4e8dfd9235ee4a9fd7c9a3d75f90f1689dbd4944bd6fd32117dacec5f93  addons/controls/OrbitControls.js

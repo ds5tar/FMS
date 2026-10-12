@@ -1,0 +1,556 @@
+<!doctype html>
+<!-- 전산실 3D 상면 화면 — 폐쇄망용 Three.js 사본(vendor/three)으로 랙·항온항습기를 세우고 시점을 쉽게 고르게 한다 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>전산실 3D 상면</title>
+<style>
+  :root{ --ink:#1c2126; --sub:#5b6672; --line:#d3d8de; --panel:#ffffffee; --brand:#009bde; }
+  html,body{margin:0;height:100%;overflow:hidden;background:#fff;
+    font:13px/1.55 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;color:var(--ink)}
+  #cv{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+  #cv.over{cursor:pointer}
+  #cv.drag{cursor:grabbing}
+  .panel{position:fixed;background:var(--panel);border:1px solid var(--line);
+    border-radius:9px;padding:12px 14px;box-shadow:0 3px 18px #0001}
+  #ui{top:14px;left:14px;width:226px}
+  #info{bottom:14px;left:14px;min-width:226px;max-width:300px}
+  #map{bottom:14px;right:14px;padding:9px 10px 8px}
+  #ui h1{margin:0 0 2px;font-size:14px}
+  .sub{color:var(--sub);font-size:11.5px}
+  #ui .sub{margin-bottom:9px}
+  #ui label{display:flex;align-items:center;gap:7px;padding:2px 0;cursor:pointer}
+  #ui hr{border:0;border-top:1px solid var(--line);margin:9px 0}
+  .sw{width:12px;height:12px;border-radius:2px;border:1px solid #0003}
+  .row{display:flex;gap:6px;flex-wrap:wrap}
+  button{font:inherit;padding:3px 9px;border:1px solid var(--line);
+    background:#fff;border-radius:6px;cursor:pointer}
+  button:hover{background:#f3f5f7}
+  #find{font:inherit;width:100%;box-sizing:border-box;padding:4px 8px;
+    border:1px solid var(--line);border-radius:6px;margin-top:9px}
+  #info b{font-size:13px}
+  #info .k{color:var(--sub);display:inline-block;min-width:52px}
+  #map .t{font-weight:600;font-size:12px;margin-bottom:5px}
+  #map .t span{font-weight:400;color:var(--sub);font-size:11px}
+  #mini{display:block;cursor:crosshair;border:1px solid var(--line);border-radius:5px;
+    background:#fff;touch-action:none}
+  #help{color:var(--sub);font-size:11px;line-height:1.6;margin-top:6px}
+</style>
+<script type="importmap">
+{"imports":{"three":"./vendor/three/three.module.min.js",
+            "three/addons/":"./vendor/three/addons/"}}
+</script>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="ui" class="panel">
+  <h1>전산실 3D 상면</h1>
+  <div class="sub">평면도에서 뽑은 좌표 · 바닥타일 600 mm</div>
+  <label><input type="checkbox" id="t_rack" checked><span class="sw" style="background:#4b525c"></span>랙 <span id="n_rack"></span></label>
+  <label><input type="checkbox" id="t_ac" checked><span class="sw" style="background:#e9ecef"></span>항온항습기 <span id="n_ac"></span></label>
+  <label><input type="checkbox" id="t_col" checked><span class="sw" style="background:#23262b"></span>기둥 <span id="n_col"></span></label>
+  <label><input type="checkbox" id="t_wall" checked><span class="sw" style="background:#f2f3f5"></span>벽</label>
+  <label><input type="checkbox" id="t_floor" checked><span class="sw" style="background:#e7e9eb"></span>바닥 · 타일선</label>
+  <hr>
+  <div class="row">
+    <button id="v_iso">비스듬히</button>
+    <button id="v_top">위에서</button>
+    <button id="v_eye">통로에서</button>
+  </div>
+  <label style="margin-top:7px"><input type="checkbox" id="t_wallhi">벽을 전체 높이로 (3.6 m)</label>
+  <input id="find" placeholder="찾기 — 랙 R123 · 열 C1 · AC05" autocomplete="off">
+</div>
+
+<div id="info" class="panel"><b>객체를 누르면 정보가 나옵니다</b></div>
+
+<div id="map" class="panel">
+  <div class="t">평면에서 위치 고르기 <span>누르거나 끌면 그곳을 봅니다</span></div>
+  <canvas id="mini"></canvas>
+  <div id="help">왼쪽 끌기 = 회전 · 오른쪽(가운데·Shift) 끌기 = 이동<br>
+    휠 = 마우스가 있는 쪽으로 확대 · 두 번 누르기 = 그 자리로 가기<br>
+    방향키·WASD = 이동 · Q/E = 회전 · +/− = 확대 · F = 고른 것 · Home = 전체</div>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const $ = (id) => document.getElementById(id);
+
+function 알림(제목, 글) {
+  const el = $("info");
+  el.replaceChildren();
+  const b = document.createElement("b"); b.textContent = 제목; el.append(b);
+  if (글) { const d = document.createElement("div"); d.className = "sub"; d.textContent = 글; el.append(d); }
+}
+
+/* ── 장면 자료 ─────────────────────────────────────────────────────
+   rack [id, 열, x, y, w, d, h] · ac·col [id, x, y, w, d, h]
+   wall [x, y, w, d, h] · floor [x, y, w, d]          단위는 전부 m
+   평면 좌표 (x 오른쪽, y 아래, z 위) 를 Three.js 의 (x, z, y) 로 옮긴다. */
+let S;
+try {
+  const r = await fetch("room3d_scene.json", {cache: "no-cache"});
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  S = await r.json();
+} catch (e) {
+  알림("장면 자료를 읽지 못했습니다", "room3d_scene.json (" + e.message + ")");
+  throw e;
+}
+const 방 = {w: S.room[0], d: S.room[1]};
+const V = (x, y, z) => new THREE.Vector3(x, z, y);
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({canvas: $("cv"), antialias: true});
+} catch (e) {
+  알림("이 브라우저에서 3D 를 그릴 수 없습니다", "크롬이나 엣지 최신판으로 열어 주세요.");
+  throw e;
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;      // r185 에서 PCFSoft 는 없어졌다
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xffffff);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 600);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.14;
+controls.zoomToCursor = true;            // 휠은 화면 가운데가 아니라 마우스 쪽으로 다가간다
+controls.screenSpacePanning = false;     // 이동은 바닥을 따라 (높이가 안 변한다)
+controls.maxPolarAngle = THREE.MathUtils.degToRad(88);
+controls.minDistance = 1.2;
+controls.maxDistance = 160;
+controls.mouseButtons = {LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN};
+
+/* ── 빛 ─────────────────────────────────────────────────────────── */
+scene.add(new THREE.HemisphereLight(0xffffff, 0xd9dee4, 2.0));
+const 해 = new THREE.DirectionalLight(0xffffff, 1.5);
+해.position.copy(V(방.w * 0.25, -방.d * 0.35, 30));
+해.target.position.copy(V(방.w / 2, 방.d / 2, 0));
+해.castShadow = true;
+해.shadow.mapSize.set(2048, 2048);
+Object.assign(해.shadow.camera, {left: -34, right: 34, top: 34, bottom: -34, near: 1, far: 90});
+해.shadow.bias = -0.0005;
+scene.add(해, 해.target);
+
+/* ── 상자 묶음 — 종류마다 InstancedMesh 하나 (그리기 호출이 적다) ───── */
+const 재질정보 = {
+  rack : {rgb: 0x4a515c, 이름: "랙"},
+  ac   : {rgb: 0xf2f4f7, 이름: "항온항습기"},
+  col  : {rgb: 0x262a30, 이름: "기둥"},
+  wall : {rgb: 0xf9fafb, 이름: "벽"},
+  floor: {rgb: 0xe8eaec, 이름: "바닥"},
+};
+const 고름색 = new THREE.Color(0xd97706), 위색 = new THREE.Color(0xf59e0b);
+
+/* 랙 옆면 — 문틀과 U 단을 옅게 그린 그림을 씌운다. 밋밋한 상자와 랙을 눈으로 가른다. */
+function 랙옆그림() {
+  const c = document.createElement("canvas"); c.width = 64; c.height = 192;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, 64, 192);
+  g.strokeStyle = "rgba(0,0,0,.28)"; g.lineWidth = 2;
+  g.strokeRect(5, 5, 54, 182);
+  g.lineWidth = 1;
+  for (let i = 1; i < 6; i++) { g.beginPath(); g.moveTo(5, 5 + i * 182 / 6); g.lineTo(59, 5 + i * 182 / 6); g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function 묶음(종류, 목록, 그림자 = true) {
+  const 기본 = new THREE.Color(재질정보[종류].rgb);
+  let mat = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.85, metalness: 0});
+  if (종류 === "rack") {
+    const 옆 = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.8, map: 랙옆그림()});
+    mat = [옆, 옆, mat, mat, 옆, 옆];          // +x −x +y(윗면) −y +z −z
+  }
+  const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, 목록.length);
+  mesh.userData = {종류, 목록, 기본};
+  목록.forEach((b, i) => { mesh.setColorAt(i, 기본); });
+  mesh.castShadow = 그림자; mesh.receiveShadow = true;
+  자리놓기(mesh);
+  scene.add(mesh);
+  return mesh;
+}
+function 자리놓기(mesh) {
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+  mesh.userData.목록.forEach((b, i) => {
+    m.compose(V(b.x + b.w / 2, b.y + b.d / 2, b.z0 + b.h / 2), q, new THREE.Vector3(b.w, b.h, b.d));
+    mesh.setMatrixAt(i, m);
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.computeBoundingBox(); mesh.computeBoundingSphere();
+}
+
+const 상자 = (id, 이름, x, y, w, d, z0, h) => ({id, 이름, x, y, w, d, z0, h});
+const 랙목록 = S.rack.map(r => 상자(r[0], "열 " + r[1], r[2], r[3], r[4], r[5], 0, r[6]));
+랙목록.forEach((b, i) => b.열 = S.rack[i][1]);
+const 묶 = {
+  rack : 묶음("rack", 랙목록),
+  ac   : 묶음("ac",  S.ac .map(r => 상자(r[0], "항온항습기", r[1], r[2], r[3], r[4], 0, r[5]))),
+  col  : 묶음("col", S.col.map(r => 상자(r[0], "구조 기둥",  r[1], r[2], r[3], r[4], 0, r[5]))),
+  /* 벽은 기본으로 허리 높이(1.2 m)로 자른다 — 3.6 m 로 세우면 칸막이벽이 랙을 통째로 가린다. */
+  wall : 묶음("wall", S.wall.map(r => 상자("", "벽", r[0], r[1], r[2], r[3], 0, 1.2))),
+  floor: 묶음("floor", S.floor.map(r => 상자("", "바닥", r[0], r[1], r[2], r[3], -0.15, 0.15)), false),
+};
+$("n_rack").textContent = S.rack.length + "대";
+$("n_ac").textContent = S.ac.length + "대";
+$("n_col").textContent = S.col.length + "개";
+
+/* 600 mm 타일선 — 바닥 조각 안에서만 긋는다 */
+const 타일 = (() => {
+  const p = [];
+  for (const r of S.floor) {
+    const [x, y, w, d] = r;
+    for (let t = x + 0.6; t < x + w - 1e-6; t += 0.6) p.push(t, 0.003, y, t, 0.003, y + d);
+    for (let t = y + 0.6; t < y + d - 1e-6; t += 0.6) p.push(x, 0.003, t, x + w, 0.003, t);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
+  const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({color: 0x465262, transparent: true, opacity: 0.16}));
+  scene.add(l); return l;
+})();
+
+/* 열 이름표 — 랙 열 위에 띄워 어디를 보고 있는지 바로 알게 한다 */
+const 열들 = new Map();
+랙목록.forEach((b, i) => {
+  const e = 열들.get(b.열) || {이름: b.열, x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9, 번호: []};
+  e.x0 = Math.min(e.x0, b.x); e.y0 = Math.min(e.y0, b.y);
+  e.x1 = Math.max(e.x1, b.x + b.w); e.y1 = Math.max(e.y1, b.y + b.d);
+  e.번호.push(i); 열들.set(b.열, e);
+});
+const 이름표 = [];
+for (const e of 열들.values()) {
+  const c = document.createElement("canvas"); c.width = 128; c.height = 64;
+  const g = c.getContext("2d");
+  g.fillStyle = "rgba(255,255,255,.92)"; g.strokeStyle = "rgba(28,33,38,.35)"; g.lineWidth = 3;
+  g.beginPath(); g.roundRect(4, 4, 120, 56, 12); g.fill(); g.stroke();
+  g.fillStyle = "#1c2126"; g.font = "bold 36px 'Malgun Gothic', sans-serif";
+  g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(e.이름, 64, 34);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({map: t, depthTest: false}));
+  /* 두 줄짜리 열(B1·B2)은 이름표가 겹치므로 열의 위 끝 쪽에 엇갈려 단다 */
+  const 짝 = e.이름.endsWith("2") ? 1 : -1;
+  s.position.copy(V((e.x0 + e.x1) / 2, 짝 < 0 ? e.y0 - 0.5 : e.y1 + 0.5, 2.4));
+  s.scale.set(1.1, 0.55, 1);
+  s.renderOrder = 10;
+  scene.add(s); 이름표.push(s);
+}
+
+/* ── 고르기 ──────────────────────────────────────────────────────── */
+const 광선 = new THREE.Raycaster();
+const 바닥면 = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+function 화면좌표(e, el = renderer.domElement) {
+  const r = el.getBoundingClientRect();
+  return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+}
+function 집기(ndc) {
+  광선.setFromCamera(ndc, camera);
+  const 대상 = [묶.rack, 묶.ac, 묶.col].filter(m => m.visible);
+  const h = 광선.intersectObjects(대상, false)[0];
+  return h ? {mesh: h.object, i: h.instanceId, 점: h.point} : null;
+}
+function 바닥점(ndc) {
+  광선.setFromCamera(ndc, camera);
+  const p = new THREE.Vector3();
+  return 광선.ray.intersectPlane(바닥면, p) ? p : null;
+}
+
+let 고른 = [], 위에 = null;
+function 칠하기() {
+  for (const m of [묶.rack, 묶.ac, 묶.col]) {
+    m.userData.목록.forEach((_, i) => m.setColorAt(i, m.userData.기본));
+  }
+  if (위에) 위에.mesh.setColorAt(위에.i, 위색);
+  for (const k of 고른) k.mesh.setColorAt(k.i, 고름색);
+  for (const m of [묶.rack, 묶.ac, 묶.col]) m.instanceColor.needsUpdate = true;
+  더러움 = true;
+}
+const 같은것 = (a, b) => a && b && a.mesh === b.mesh && a.i === b.i;
+
+function 정보() {
+  const el = $("info");
+  el.replaceChildren();
+  if (!고른.length) { 알림("객체를 누르면 정보가 나옵니다", "두 번 누르면 그 자리로 갑니다."); return; }
+  const 줄 = (k, v) => {
+    const d = document.createElement("div");
+    const s = document.createElement("span"); s.className = "k"; s.textContent = k;
+    d.append(s, document.createTextNode(v)); el.append(d);
+  };
+  const b0 = document.createElement("b");
+  if (고른.length > 1) {
+    const 첫 = 고른[0].mesh.userData.목록[고른[0].i], 끝 = 고른[고른.length - 1].mesh.userData.목록[고른[고른.length - 1].i];
+    b0.textContent = "열 " + 첫.열; el.append(b0);
+    줄("랙", `${고른.length}대 (${첫.id} ~ ${끝.id})`);
+  } else {
+    const {mesh, i} = 고른[0], b = mesh.userData.목록[i];
+    b0.textContent = b.id + " "; el.append(b0);
+    const s = document.createElement("span"); s.className = "sub"; s.textContent = 재질정보[mesh.userData.종류].이름;
+    b0.after(s);
+    if (b.이름) 줄("구분", b.이름);
+    줄("위치", `X ${b.x.toFixed(2)} m · Y ${b.y.toFixed(2)} m`);
+    줄("크기", `${b.w.toFixed(2)} × ${b.d.toFixed(2)} × ${b.h.toFixed(2)} m`);
+  }
+  const d = document.createElement("div"); d.className = "sub"; d.style.marginTop = "4px";
+  d.textContent = "F 를 누르면 가까이 갑니다."; el.append(d);
+}
+
+/* ── 시점 옮기기 ──────────────────────────────────────────────────
+   목표점과 카메라를 함께 옮긴다. 방향은 두고, 거리만 바꾸거나 둔다. */
+let 비행 = null, 더러움 = true;
+function 날기(목표, 거리 = null, 방향 = null, ms = 450) {
+  const 시작 = {t: performance.now(), 목표: controls.target.clone(), 차: camera.position.clone().sub(controls.target)};
+  const 끝차 = (방향 ? 방향.clone().normalize() : 시작.차.clone().normalize())
+    .multiplyScalar(거리 ?? 시작.차.length());
+  비행 = {시작, 끝목표: 목표.clone(), 끝차, ms};
+}
+function 비행진행(now) {
+  if (!비행) return false;
+  const {시작, 끝목표, 끝차, ms} = 비행;
+  const t = Math.min(1, (now - 시작.t) / ms), e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+  controls.target.lerpVectors(시작.목표, 끝목표, e);
+  const 길이 = THREE.MathUtils.lerp(시작.차.length(), 끝차.length(), e);
+  const 차 = 시작.차.clone().normalize().lerp(끝차.clone().normalize(), e).normalize().multiplyScalar(길이);
+  camera.position.copy(controls.target).add(차);
+  if (t >= 1) 비행 = null;
+  return true;
+}
+const 지금거리 = () => camera.position.distanceTo(controls.target);
+function 옮기기(d) { controls.target.add(d); camera.position.add(d); 더러움 = true; }
+function 앞오른쪽() {
+  const 앞 = controls.target.clone().sub(camera.position); 앞.y = 0;
+  /* 바로 위에서 내려다보면 앞이 0 이 된다 — 화면 위쪽 방향을 앞으로 쓴다 */
+  if (앞.lengthSq() < 1e-6) 앞.copy(camera.up).applyQuaternion(camera.quaternion).setY(0);
+  if (앞.lengthSq() < 1e-6) 앞.set(0, 0, -1);
+  앞.normalize();
+  return {앞, 오른: new THREE.Vector3().crossVectors(앞, new THREE.Vector3(0, 1, 0))};
+}
+function 확대(배) {
+  const 차 = camera.position.clone().sub(controls.target);
+  차.setLength(THREE.MathUtils.clamp(차.length() * 배, controls.minDistance, controls.maxDistance));
+  camera.position.copy(controls.target).add(차); 더러움 = true;
+}
+function 돌리기(각) {
+  const 차 = camera.position.clone().sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), 각);
+  camera.position.copy(controls.target).add(차); 더러움 = true;
+}
+/* 방위(az)·올려본 각(el) → 카메라 방향. az 0 이면 평면 아래쪽(+y)에서 위를 본다. */
+const 방향 = (az, el) => new THREE.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+function 맞춤거리(반지름) {
+  const v = THREE.MathUtils.degToRad(camera.fov) / 2;
+  const h = Math.atan(Math.tan(v) * camera.aspect);
+  return 반지름 / Math.sin(Math.min(v, h));
+}
+const 가운데 = V(방.w / 2, 방.d / 2, 0.6);
+const 전체반지름 = Math.hypot(방.w, 방.d) / 2 * 0.86;
+const 시점들 = {
+  iso: () => 날기(가운데, 맞춤거리(전체반지름), 방향(0.16, 0.72)),
+  top: () => 날기(가운데, 맞춤거리(전체반지름) * 0.97, 방향(0, 1.5)),
+  /* 사람이 랙 사이 가장 넓은 통로에 서서 통로를 따라 보는 자리 */
+  eye: () => 날기(V(랙통로(), 방.d * 0.45, 1.5), 9, 방향(0, 0.09)),
+};
+function 랙통로() {
+  const 열 = [...열들.values()].map(e => ({x0: e.x0, x1: e.x1})).sort((p, q) => p.x0 - q.x0);
+  let 최대 = 0, 자리 = 방.w / 2;
+  for (let i = 1; i < 열.length; i++) {
+    const 폭 = 열[i].x0 - 열[i - 1].x1;
+    if (폭 > 최대) { 최대 = 폭; 자리 = (열[i].x0 + 열[i - 1].x1) / 2; }
+  }
+  return 자리;
+}
+function 가까이(목록) {
+  if (!목록.length) return;
+  const 상 = new THREE.Box3();
+  for (const {mesh, i} of 목록) {
+    const b = mesh.userData.목록[i];
+    상.expandByPoint(V(b.x, b.y, 0)).expandByPoint(V(b.x + b.w, b.y + b.d, b.h));
+  }
+  const c = 상.getCenter(new THREE.Vector3()); c.y = Math.min(c.y, 1.0);
+  const r = 상.getSize(new THREE.Vector3()).length() / 2;
+  날기(c, Math.max(7, 맞춤거리(r) * 1.25));     // 랙 하나면 이웃 랙까지 보이는 거리
+}
+
+/* ── 마우스 ──────────────────────────────────────────────────────── */
+const cv = renderer.domElement;
+let 누름 = null, 볼점 = null;
+cv.addEventListener("pointerdown", e => {
+  비행 = null;
+  누름 = {x: e.clientX, y: e.clientY, 버튼: e.button};
+  cv.classList.add("drag");
+});
+addEventListener("pointerup", e => {
+  cv.classList.remove("drag");
+  if (!누름 || e.target !== cv) { 누름 = null; return; }
+  const 움직임 = Math.hypot(e.clientX - 누름.x, e.clientY - 누름.y);
+  if (누름.버튼 === 0 && 움직임 < 5) {
+    const h = 집기(화면좌표(e));
+    고른 = h ? [h] : []; 정보(); 칠하기();
+  }
+  누름 = null;
+});
+cv.addEventListener("pointermove", e => { if (!누름) 볼점 = 화면좌표(e); });
+cv.addEventListener("pointerleave", () => { 볼점 = null; if (위에) { 위에 = null; 칠하기(); } });
+cv.addEventListener("dblclick", e => {
+  const ndc = 화면좌표(e), h = 집기(ndc);
+  if (h) { 고른 = [h]; 정보(); 칠하기(); 가까이([h]); return; }
+  const p = 바닥점(ndc);
+  if (p) 날기(p.setY(0.6), Math.min(지금거리(), 14));
+});
+cv.addEventListener("wheel", () => { 비행 = null; }, {passive: true});
+cv.addEventListener("contextmenu", e => e.preventDefault());
+controls.addEventListener("change", () => { 더러움 = true; });
+
+/* ── 키보드 ──────────────────────────────────────────────────────── */
+addEventListener("keydown", e => {
+  if (e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey || e.altKey) return;
+  const 걸음 = 지금거리() * 0.08, {앞, 오른} = 앞오른쪽();
+  const k = e.key.toLowerCase();
+  const 동작 = {
+    arrowup: () => 옮기기(앞.multiplyScalar(걸음)),    w: () => 옮기기(앞.multiplyScalar(걸음)),
+    arrowdown: () => 옮기기(앞.multiplyScalar(-걸음)), s: () => 옮기기(앞.multiplyScalar(-걸음)),
+    arrowleft: () => 옮기기(오른.multiplyScalar(-걸음)), a: () => 옮기기(오른.multiplyScalar(-걸음)),
+    arrowright: () => 옮기기(오른.multiplyScalar(걸음)), d: () => 옮기기(오른.multiplyScalar(걸음)),
+    q: () => 돌리기(0.12), e: () => 돌리기(-0.12),
+    "+": () => 확대(0.85), "=": () => 확대(0.85), "-": () => 확대(1.18), "_": () => 확대(1.18),
+    f: () => 가까이(고른), home: () => 시점들.iso(),
+  }[k];
+  if (!동작) return;
+  e.preventDefault(); 비행 = null; 동작();
+});
+
+/* ── 미니맵 — 평면 위에서 보는 곳을 누르거나 끌어 고른다 ─────────── */
+const mini = $("mini"), mg = mini.getContext("2d");
+const 미 = {w: 262, 여백: 6};
+미.k = (미.w - 미.여백 * 2) / 방.w;
+미.h = Math.round(방.d * 미.k + 미.여백 * 2);
+{
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  mini.width = 미.w * dpr; mini.height = 미.h * dpr;
+  mini.style.width = 미.w + "px"; mini.style.height = 미.h + "px";
+  mg.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+const 미점 = (x, y) => [미.여백 + x * 미.k, 미.여백 + y * 미.k];
+function 미니맵() {
+  mg.clearRect(0, 0, 미.w, 미.h);
+  const 칸 = (r, 색, 선) => {
+    const [a, b] = 미점(r[0], r[1]);
+    mg.fillStyle = 색; mg.fillRect(a, b, r[2] * 미.k, r[3] * 미.k);
+    if (선) { mg.strokeStyle = 선; mg.lineWidth = 0.6; mg.strokeRect(a, b, r[2] * 미.k, r[3] * 미.k); }
+  };
+  S.floor.forEach(r => 칸(r, "#e8eaec"));
+  S.wall.forEach(r => 칸(r, "#bcc3cb"));
+  S.ac.forEach(r => 칸(r.slice(1), "#f2f4f7", "#9aa3ad"));
+  S.col.forEach(r => 칸(r.slice(1), "#262a30"));
+  S.rack.forEach(r => 칸(r.slice(2), "#4a515c"));
+  for (const {mesh, i} of 고른) { const b = mesh.userData.목록[i]; 칸([b.x, b.y, b.w, b.d], "#d97706"); }
+
+  /* 화면 네 귀퉁이가 바닥에 닿는 자리 = 지금 보이는 범위. 하늘을 보는 귀퉁이는 멀리 잘라 둔다. */
+  const 귀 = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => {
+    광선.setFromCamera(new THREE.Vector2(x, y), camera);
+    const p = new THREE.Vector3();
+    if (!광선.ray.intersectPlane(바닥면, p) || p.distanceTo(camera.position) > 90) {
+      광선.ray.at(90, p);
+    }
+    return 미점(p.x, p.z);
+  });
+  mg.beginPath(); 귀.forEach(([a, b], i) => i ? mg.lineTo(a, b) : mg.moveTo(a, b)); mg.closePath();
+  mg.fillStyle = "rgba(0,155,222,.14)"; mg.fill();
+  mg.strokeStyle = "rgba(0,155,222,.9)"; mg.lineWidth = 1.2; mg.stroke();
+
+  const [tx, ty] = 미점(controls.target.x, controls.target.z);
+  const [cx, cy] = 미점(camera.position.x, camera.position.z);
+  mg.strokeStyle = "rgba(0,155,222,.9)"; mg.lineWidth = 1.2;
+  mg.beginPath(); mg.moveTo(cx, cy); mg.lineTo(tx, ty); mg.stroke();
+  mg.fillStyle = "#009bde"; mg.beginPath(); mg.arc(cx, cy, 3.5, 0, Math.PI * 2); mg.fill();
+  mg.strokeStyle = "#fa5a00"; mg.lineWidth = 2;
+  mg.beginPath(); mg.moveTo(tx - 6, ty); mg.lineTo(tx + 6, ty); mg.moveTo(tx, ty - 6); mg.lineTo(tx, ty + 6); mg.stroke();
+}
+function 미니에서(e) {
+  const r = mini.getBoundingClientRect();
+  const x = (e.clientX - r.left - 미.여백) / 미.k, y = (e.clientY - r.top - 미.여백) / 미.k;
+  return V(THREE.MathUtils.clamp(x, 0, 방.w), THREE.MathUtils.clamp(y, 0, 방.d), controls.target.y);
+}
+let 미끌기 = false;
+mini.addEventListener("pointerdown", e => {
+  미끌기 = true; mini.setPointerCapture(e.pointerId);
+  날기(미니에서(e), null, null, 250);
+});
+mini.addEventListener("pointermove", e => {
+  if (!미끌기) return;
+  비행 = null; 옮기기(미니에서(e).sub(controls.target));
+});
+mini.addEventListener("pointerup", () => { 미끌기 = false; });
+mini.addEventListener("wheel", e => { e.preventDefault(); 비행 = null; 확대(e.deltaY > 0 ? 1.15 : 0.87); }, {passive: false});
+
+/* ── 찾기 — 랙 R123(또는 123) · 열 C1 · 항온항습기 AC05 · 기둥 C01 ── */
+$("find").addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  const 말 = e.target.value.trim().toUpperCase().replace(/\s+/g, "");
+  if (!말) return;
+  let 찾음 = [];
+  if (열들.has(말)) 찾음 = 열들.get(말).번호.map(i => ({mesh: 묶.rack, i}));
+  else {
+    const 후보 = [/^\d+$/.test(말) ? "R" + 말.padStart(3, "0") : 말,
+                  말.replace(/^(R|AC|C)(\d+)$/, (_, a, n) => a + n.padStart(a === "R" ? 3 : 2, "0"))];
+    for (const m of [묶.rack, 묶.ac, 묶.col]) {
+      const i = m.userData.목록.findIndex(b => 후보.includes(b.id));
+      if (i >= 0) { 찾음 = [{mesh: m, i}]; break; }
+    }
+  }
+  if (!찾음.length) { 고른 = []; 칠하기(); 알림(`「${e.target.value.trim()}」 를 찾지 못했습니다`, "랙은 R123, 열은 C1, 항온항습기는 AC05, 기둥은 C01 처럼 적어 주세요."); return; }
+  찾음.forEach(k => k.mesh.visible = true);
+  고른 = 찾음; 정보(); 칠하기(); 가까이(찾음);
+  e.target.blur();
+});
+
+/* ── 보이기·단추 ──────────────────────────────────────────────────── */
+for (const [id, 켜기] of [
+  ["t_rack",  v => { 묶.rack.visible = v; 이름표.forEach(s => s.visible = v); }],
+  ["t_ac",    v => { 묶.ac.visible = v; }],
+  ["t_col",   v => { 묶.col.visible = v; }],
+  ["t_wall",  v => { 묶.wall.visible = v; }],
+  ["t_floor", v => { 묶.floor.visible = v; 타일.visible = v; }],
+]) $(id).addEventListener("change", e => { 켜기(e.target.checked); 더러움 = true; });
+$("t_wallhi").addEventListener("change", e => {
+  const h = e.target.checked ? 3.6 : 1.2;
+  묶.wall.userData.목록.forEach(b => b.h = h);
+  자리놓기(묶.wall); 더러움 = true;
+});
+$("v_iso").onclick = 시점들.iso;
+$("v_top").onclick = 시점들.top;
+$("v_eye").onclick = 시점들.eye;
+
+/* ── 크기·돌기 ─────────────────────────────────────────────────────── */
+function 크기맞추기() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  더러움 = true;
+}
+addEventListener("resize", 크기맞추기);
+크기맞추기();
+controls.target.copy(가운데);
+camera.position.copy(가운데).add(방향(0.16, 0.72).multiplyScalar(맞춤거리(전체반지름)));
+controls.update();
+정보();
+
+function 돌기(now) {
+  requestAnimationFrame(돌기);
+  const 날았나 = 비행진행(now);
+  const 움직였나 = controls.update();
+  if (볼점 && !누름) {
+    const h = 집기(볼점); 볼점 = null;
+    if (!같은것(h, 위에)) { 위에 = h; cv.classList.toggle("over", !!h); 칠하기(); }
+  }
+  if (날았나 || 움직였나 || 더러움) {
+    renderer.render(scene, camera); 미니맵(); 더러움 = false;
+  }
+}
+requestAnimationFrame(돌기);
+window.__room3d = {camera, controls, 묶, 고른: () => 고른, 시점들, 날기};   // 시험용 손잡이
+</script>
+</body>
+</html>
