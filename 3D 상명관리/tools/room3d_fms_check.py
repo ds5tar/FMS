@@ -76,6 +76,7 @@ try:
         확인(메뉴[:2] == ["대시보드", "3D 상면"], f"위 메뉴 순서 — {메뉴}")
         pg.click('#menu button[data-mode="room3d"]')
         fr = 틀()
+        기다리기(fr, "window.__room3d.FMS().점 > 0", 15000)
         st = 상태(fr)
         확인(st["켬"] and st["현장"] == "SEOUL", f"FMS 연결·서울센터 — {st['현장']}")
         확인(st["출처"] == "기본", f"서버에 배치가 없어 기본 배치(room3d_site_SEOUL.json) — {st['출처']}")
@@ -169,9 +170,25 @@ try:
         fr.click("#toView"); fr.wait_for_timeout(1200)
         확인(상태(fr)["출처"] == "서버" and 상태(fr)["값"].get(새것[0][0]), "보기로 돌아오면 실시간 값 다시 켜짐 · 새 센서도 값")
 
-        # ── 6. 현장 바꾸기 — 부산은 배치가 없어 예시 도면 ──
+        # ── 6. 현장 바꾸기 — 부산은 서버 배치가 없어 부산 기본 배치, 센서 4개가 UPS·온습도에 붙는다 (79차) ──
         fr.select_option("#layoutSel", "2"); 기다리기(fr, "window.__room3d.FMS().현장 === 'BUSAN' && window.__room3d.FMS().출처", 15000)
-        확인(상태(fr)["출처"] == "예시", f"부산센터 — 배치 없음 → 예시 도면 ({상태(fr)['출처']})")
+        확인(상태(fr)["출처"] == "기본", f"부산센터 — 서버 배치 없음 → 기본 배치(room3d_site_BUSAN.json) ({상태(fr)['출처']})")
+        기다리기(fr, "(v => v.UPS01 && v.TH01)(window.__room3d.FMS().값)", 15000); 다옴(fr, 2500)
+        값 = 상태(fr)["값"]
+        보임 = sorted(fr.evaluate("window.__room3d.표보임()"))
+        확인(보임 == ["TH01", "UPS01"] and "코드를 못 찾은" not in fr.inner_text("#alarms"),
+             f"부산 값 — UPS {값['UPS01']['글']} · 온습도 {값['TH01']['글']} (표 {보임})")
+        # 79차 「서울센터 제외하고 값들이 너무 복잡 — 정상값은 작게, 장애는 지금처럼」 — 작은 방·센서 몇 개여도 정상 값은 칩
+        fr.evaluate("window.__room3d.시점들.iso()"); 다옴(fr, 2500)
+        칩 = sorted(fr.evaluate("window.__room3d.표칩()"))
+        확인(칩 == ["TH01", "UPS01"], f"부산 전체 보기 — 정상 값 2개 모두 작은 칩 ({칩})")
+        pg.screenshot(path=f"{OUT}/08b_부산_정상값_칩.png")
+        fr.evaluate("window.__room3d.덮어쓰기({UPS01: {단계: '위험', 글: ['배터리 전압 41.0 V', '부하율 55.0 %']}})")
+        fr.wait_for_timeout(5600); 다옴(fr, 800)
+        칩 = sorted(fr.evaluate("window.__room3d.표칩()")); 보임 = sorted(fr.evaluate("window.__room3d.표보임()"))
+        확인(칩 == ["TH01"] and "UPS01" in 보임, f"UPS 위험 → 큰 표, 정상 온습도는 칩 그대로 (칩 {칩} · 보임 {보임})")
+        pg.screenshot(path=f"{OUT}/08c_부산_UPS위험_큰표.png")
+        fr.evaluate("window.__room3d.덮어쓰기({})"); fr.wait_for_timeout(5600)
         fr.select_option("#layoutSel", "1"); 기다리기(fr, "window.__room3d.FMS().현장 === 'SEOUL' && window.__room3d.FMS().출처 === '서버'", 15000)
         확인(True, "서울로 돌아오면 저장한 배치")
         # 서울 전체 보기 — 값 표가 많아도(78) 멀리서 정상 값이 작게라도 보인다 (73차)
@@ -179,8 +196,9 @@ try:
         보임 = fr.evaluate("window.__room3d.표보임()")
         모두 = fr.evaluate("window.__room3d.표수()")
         이상 = [k for k, v in 상태(fr)["값"].items() if v["단계"] != "정상"]
+        크게본것 = fr.evaluate("(ids => ids.filter(id => { const v = window.__room3d.FMS().값[id]; return v && v.단계 !== '정상'; }))(window.__room3d.표보임())")
         확인(all(k in 보임 for k in 이상) and len(보임) >= 12,
-             f"서울 전체 보기 — 이상 값 {len(이상)}개 전부 + 겹치지 않는 정상 값, 표 {len(보임)} / {모두}개 보임")
+             f"서울 전체 보기 — 이상 값 {len(이상)}개 전부 크게 + 정상 값은 작은 칩 (표 {len(보임)} / {모두}개 보임, 77차)")
         pg.screenshot(path=f"{OUT}/09_서울_전체_값표.png")
 
         # ── 6-1. 센서 몇 개만 놓은 현장 — 전체 보기(멀리)에서도 정상 값이 보여야 한다 (73차 사용자 「센서 값이 보이지 않는다」) ──
@@ -188,15 +206,18 @@ try:
             m.항목 = m.항목.filter(it => it.종류 !== 'rack' && !it.점);
             m.항목.push({id: 'UPS01', 종류: 'ups', 이름: 'UPS', x: 22, y: 9, w: 1.2, d: .8, h: 1.95, z0: 0, 회전: 0, 점: 'DJ.UPS01'},
                         {id: 'T01', 종류: 's_temp', 이름: '온도 센서', x: 25, y: 9, w: .06, d: .03, h: .1, z0: 1.5, 회전: 0, 점: 'DJ.ENV.TEMP'},
-                        {id: 'H01', 종류: 's_humi', 이름: '습도 센서', x: 26, y: 9, w: .06, d: .03, h: .1, z0: 1.5, 회전: 0, 점: 'DJ.ENV.HUMI'});
+                        {id: 'H01', 종류: 's_humi', 이름: '습도 센서', x: 26, y: 9, w: .06, d: .03, h: .1, z0: 1.5, 회전: 0, 점: 'DJ.ENV.HUMI'},
+                        {id: 'X01', 종류: 's_temp', 이름: '없는 코드', x: 27, y: 9, w: .06, d: .03, h: .1, z0: 1.5, 회전: 0, 점: 'NO.SUCH.TEMP'});
             return {판: 2, 방: m.방, 항목: m.항목}; }""")
         r = pg.evaluate("([t, m]) => fetch('/api/sites/3/room-layout', {method: 'PUT', headers: {Authorization: 'Bearer ' + t, 'Content-Type': 'application/json'}, body: JSON.stringify({layout: m})}).then(r => r.status)", [tok, 대전])
         확인(r == 200, f"대전 배치 저장 — {r}")
         fr.select_option("#layoutSel", "3"); 기다리기(fr, "window.__room3d.FMS().현장 === 'DAEJEON' && window.__room3d.FMS().출처 === '서버'", 15000)
-        기다리기(fr, "Object.keys(window.__room3d.FMS().값).length === 3", 15000); 다옴(fr, 2500)
+        기다리기(fr, "Object.keys(window.__room3d.FMS().값).length === 4", 15000); 다옴(fr, 2500)
         거리 = fr.evaluate("window.__room3d.camera.position.distanceTo(window.__room3d.controls.target)")
         보임 = sorted(fr.evaluate("window.__room3d.표보임()"))
-        확인(보임 == ["H01", "T01", "UPS01"], f"대전 전체 보기(거리 {거리:.0f} m) — 정상 값 표 {보임}")
+        확인(보임 == ["H01", "T01", "UPS01"], f"대전 전체 보기(거리 {거리:.0f} m) — 정상 값 표 {보임} (코드를 못 찾은 X01 은 표 없음)")
+        알람글 = fr.inner_text("#alarms")
+        확인("코드를 못 찾은 항목 1개" in 알람글 and "NO.SUCH" not in 알람글, "코드 못 찾은 항목은 알람 목록이 아니라 개수로만 (77차)")
         pg.screenshot(path=f"{OUT}/10_대전_센서3개_전체.png")
 
         # ── 6-2. 대전 항온항습기·10 m 거리감지 누수·랙 2대 — 현장 설정 스크립트(90_ops/site_setup/daejeon_crac.js) 두 번 (75차) ──

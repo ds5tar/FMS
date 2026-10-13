@@ -13,10 +13,10 @@
 | `room3d.html` | 화면 전체(보기 + 배치 편집기). 한 파일이다 |
 | `room3d_scene.json` | 처음 도면(랙 292·공조·기둥·벽 좌표, 미터 단위) |
 | `vendor/three/` | Three.js r185 사본. 폐쇄망에서도 돌도록 CDN 대신 넣었다 |
-| `room3d_sites.json`, `room3d_site_SEOUL.json` | 현장별 기본 배치(데모 서울센터 3층 전산실). FMS 관제 화면 안에서 열 때만 쓴다 |
+| `room3d_sites.json`, `room3d_site_*.json` | 현장별 기본 배치(데모 서울·부산·대전·대구센터). FMS 관제 화면 안에서 열 때만 쓴다 |
 | `tools/room3d_check.py` | 크로미엄으로 열어 보기·게이지·실시간 미리보기·편집기·저장을 시험한다 |
 | `tools/room3d_fms_check.py` | 관제 화면의 「3D 상면」 메뉴를 시험한다. FMS 본체(`run_api --demo`)가 있어야 돌아간다 |
-| `tools/room3d_seoul.py` | 서울센터 기본 배치를 만든다. FMS 본체의 `60_monitor_ui` 폴더에 두고 돌린다 |
+| `tools/room3d_seoul.py`, `tools/room3d_centers.py` | 서울센터, 부산·대전·대구센터 기본 배치를 만든다. FMS 본체의 `60_monitor_ui` 폴더에 두고 돌린다 |
 | `원본_추출/` | 평면도 그림에서 좌표를 뽑던 옛 스크립트와 첫 3D 그림. 원본 평면도 그림은 넣지 않았다 |
 | `참조_업체_3D상면관리_20261012.md` | 업체 제품 기능 조사 |
 

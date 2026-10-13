@@ -789,21 +789,38 @@ function 표그림(줄들, 단, 넓게) {
     g.fillText(l, W / 2 + (위험 ? 0 : 6), 6 + (i + .5) * (넓게 ? 32 : 40)); });
   return c;
 }
+/* 정상 값 작은 칩 — 값 한 줄만, 옅은 테두리 (77차 「정상값은 작게, 장애는 지금처럼」) */
+function 칩그림(글) {
+  const c = document.createElement("canvas"), g = c.getContext("2d");
+  g.font = "bold 26px 'Malgun Gothic', sans-serif";
+  const W = Math.ceil(g.measureText(글).width + 22), H = 38;
+  c.width = W; c.height = H;
+  g.fillStyle = "rgba(255,255,255,.88)"; g.strokeStyle = "rgba(22,163,74,.75)"; g.lineWidth = 2.5;
+  g.beginPath(); g.roundRect(2, 2, W - 4, H - 4, 9); g.fill(); g.stroke();
+  g.fillStyle = "#1c2126"; g.font = "bold 26px 'Malgun Gothic', sans-serif"; g.textBaseline = "middle"; g.textAlign = "center";
+  g.fillText(글, W / 2, H / 2 + 1);
+  return c;
+}
+function 텍스처(옛, c) {            // 같은 크기면 그림만 바꾸고, 크기가 바뀌면 새 텍스처 — 같은 텍스처에 큰 그림을 넣으면 WebGL 이 넘친다 (75차)
+  if (옛 && 옛.image.width === c.width && 옛.image.height === c.height) { 옛.image = c; 옛.needsUpdate = true; return 옛; }
+  if (옛) 옛.dispose();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 function 표맞추기(id, 위치, 줄들, 단, 넓게, 크기) {
   let s = 라이브.표.get(id);
   const c = 표그림(줄들, 단, 넓게);
   if (!s) {
-    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
     /* 화면 크기가 늘 같은 표 — 가까이 가도 화면을 덮지 않고, 멀리서도 읽힌다 */
-    s = new THREE.Sprite(new THREE.SpriteMaterial({map: t, depthTest: false, sizeAttenuation: false})); s.renderOrder = 20; s.userData.id = id;
+    s = new THREE.Sprite(new THREE.SpriteMaterial({depthTest: false, sizeAttenuation: false})); s.renderOrder = 20; s.userData.id = id;
     라이브.덧.add(s); 라이브.표.set(id, s);
-  } else if (s.material.map.image.width === c.width && s.material.map.image.height === c.height) {
-    s.material.map.image = c; s.material.map.needsUpdate = true;
-  } else {               // 크기가 바뀐 그림은 새 텍스처로 — 같은 텍스처에 큰 그림을 넣으면 WebGL 이 넘친다고 경고한다 (75차)
-    const 옛 = s.material.map, t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-    s.material.map = t; s.material.needsUpdate = true; 옛.dispose();
   }
-  s.position.copy(위치); s.userData.px = 크기 * c.width / (넓게 ? 340 : 190); s.userData.비 = c.height / c.width; s.userData.단계 = 단;
+  const 큰 = s.userData.큰 = {tex: 텍스처(s.userData.큰 && s.userData.큰.tex, c), px: 크기 * c.width / (넓게 ? 340 : 190), 비: c.height / c.width};
+  if (단 === "정상") {               // 멀리서 쓰는 작은 칩 (화면에서 글자 높이 약 11 px)
+    const 칩 = 칩그림(줄들[0]);
+    s.userData.작은 = {tex: 텍스처(s.userData.작은 && s.userData.작은.tex, 칩), px: 칩.width * .42, 비: 칩.height / 칩.width};
+  } else if (s.userData.작은) { s.userData.작은.tex.dispose(); s.userData.작은 = null; }
+  if (!s.material.map || (s.material.map !== 큰.tex && !(s.userData.작은 && s.material.map === s.userData.작은.tex))) { s.material.map = 큰.tex; s.material.needsUpdate = true; }
+  s.position.copy(위치); s.userData.px = 큰.px; s.userData.비 = 큰.비; s.userData.단계 = 단;
 }
 /* 바닥 온도 분포 — 온도 센서 값을 거리 반비례로 퍼뜨려 바닥에 깐다 (파랑 18℃ → 초록 22 → 노랑 27 → 주황 30 → 빨강 34) */
 const 열색표 = [[18, [43, 123, 220]], [22, [31, 179, 122]], [27, [227, 194, 27]], [30, [240, 122, 26]], [34, [214, 40, 40]]];
@@ -884,6 +901,7 @@ function 표이름(s) {
 function 라이브그리기() {
   for (const s of 라이브.센서) {
     const v = 라이브.값.get(s.id); if (!v) continue;
+    if (v.없음) { if (라이브.표.has(s.id)) { 라이브.덧.remove(라이브.표.get(s.id)); 라이브.표.delete(s.id); } continue; }
     if (s.종류 === "crac") continue;          // 항온항습기는 아래에서 넓은 표로
     if (감지선(s)) {
       if (v.누수) { const [px, py] = 선위치(s, v.위치); 표맞추기(s.id, V(px, py, .9), FMS켬 ? [...값글(s.id), 표이름(s)] : 값글(s.id), v.단계, true, 190); }
@@ -895,7 +913,7 @@ function 라이브그리기() {
     if (FMS켬) 표맞추기(s.id, V(s.x, s.y, 분류(s) === "랙" ? s.h + .45 : 위), [...값글(s.id), 표이름(s)], v.단계, false, 92);
     else 표맞추기(s.id, V(s.x, s.y, 위), 값글(s.id), v.단계, false, s.종류 === "s_th" ? 104 : 74);
   }
-  for (const c of 모형.항목) if (c.종류 === "crac" && 라이브.값.has(c.id)) {
+  for (const c of 모형.항목) if (c.종류 === "crac" && 라이브.값.has(c.id) && !라이브.값.get(c.id).없음) {
     const v = 라이브.값.get(c.id);
     표맞추기(c.id, V(c.x, c.y, c.h + .85), 값글(c.id), v.단계, true, 176);
   }
@@ -909,7 +927,7 @@ function 알람그리기() {
     엘("div", {class: "머리"}, 엘("b", {textContent: `알람 ${라이브.알람.filter(a => a.v.단계 !== "정지").length}건 · ${FMS켬 ? "미수신" : "대기"} ${수("정지")}${FMS켬 ? "개" : "대"}`}),
       엘("span", {class: "sub", textContent: FMS켬 ? FMS.머리말 : "데모 값 · 2초마다 바뀜"})),
     엘("div", {class: "범례"}, ...["정상", "주의", "경고", "위험", "정지"].map(단 => 엘("span", {}, 엘("i", {style: "background:" + 상태색[단]}), 단 === "정지" ? "대기·정지" : 단)),
-      엘("span", {textContent: FMS켬 ? `· 배치한 FMS 센서 ${라이브.센서.length}${FMS.밖알람 ? ` · 배치 안 된 센서의 알람 ${FMS.밖알람}건` : ""}`
+      엘("span", {textContent: FMS켬 ? `· 배치한 FMS 센서 ${라이브.센서.length - (FMS.코드없음 || []).length}${FMS.밖알람 ? ` · 배치 안 된 센서의 알람 ${FMS.밖알람}건` : ""}${(FMS.코드없음 || []).length ? ` · 코드를 못 찾은 항목 ${FMS.코드없음.length}개 (배치 편집에서 확인)` : ""}`
         : `· 랙 흡기 ${라이브.센서.filter(s => s.랙).length} · 통로 온습도 ${라이브.센서.filter(s => s.종류 === "s_th").length} · 누수선 ${라이브.센서.filter(s => s.종류 === "s_leak_line").length}`})),
     ...라이브.알람.slice(0, 7).map(({id, v}) => {
       const s = 센서찾기(id), 이름 = FMS켬 ? FMS알람이름(id) : !s ? `${id} 항온항습기` : s.데모 ? s.이름 : `${s.id} ${s.이름}${s.랙 ? ` · ${s.랙}` : ""}`;
@@ -956,18 +974,25 @@ $("t_heat").onchange = e => { 라이브.바닥열 = e.target.checked; if (라이
 function 라이브깜빡(now) {
   const p = .5 + .5 * Math.sin(now / 230);
   상태재질.위험.emissiveIntensity = .3 + 1.2 * p;
-  /* px → 스프라이트 크기. 이상 값은 늘 크게 보인다.
-     정상 값 — 표가 적으면(40개 이하) 늘 보인다. 많을 때 멀리서는, FMS 값은 작게(70 %) 보이고 데모 값은 숨긴다 (73차 「센서 값이 안 보인다」) */
-  const 단위 = 1 / (camera.projectionMatrix.elements[5] * H / 2), 적음 = 라이브.표.size <= 40, 표들 = [];
+  /* px → 스프라이트 크기. 이상 값(위험·경고·주의·미수신)은 늘 크게 — 이름 줄까지.
+     정상 값은 가까이(26 m, 항온항습기 42 m) 가면 크게, 멀리서는 값 한 줄 작은 칩 (77차 「정상값은 작게, 장애는 지금처럼」).
+     「가까이」 는 방 크기에 비례 — 서울(긴 변 52 m)은 26 m 그대로, 14 m 방은 7 m. 작은 방은 전체 보기도 26 m 안이고
+     표가 20개 이하라 정상 값이 늘 큰 표가 되어 복잡했다 (79차). FMS 에서는 표가 적어도 정상 값은 칩.
+     데모 미리보기(파일로 열기)는 예전처럼 정상 값을 멀리서 숨긴다(표가 20개 이하면 크게) — 가상 센서가 114개라 칩도 덮는다 */
+  const 단위 = 1 / (camera.projectionMatrix.elements[5] * H / 2), 적음 = 라이브.표.size <= 20, 표들 = [];
+  const 방비 = Math.min(1, Math.max(모형.방.w, 모형.방.d) / 52);
   for (const s of 라이브.표.values()) {
-    const 단 = s.userData.단계, 거리 = s.position.distanceTo(camera.position), 가까움 = 거리 < (s.userData.px > 150 ? 42 : 26);
-    const 크게 = 단 !== "정상" || 가까움 || 적음, 배 = 단 === "위험" ? 1 + .12 * p : 크게 ? 1 : .7;
-    s.visible = 크게 || FMS켬;
-    const k = s.userData.px * 단위 * 배;
-    s.scale.set(k, k * s.userData.비, 1); s.center.set(.5, .5);
+    const 단 = s.userData.단계, 거리 = s.position.distanceTo(camera.position), 큰 = s.userData.큰 || {px: s.userData.px, 비: s.userData.비};
+    const 가까움 = 거리 < (큰.px > 150 ? 42 : 26) * 방비, 크게 = 단 !== "정상" || 가까움 || (적음 && !FMS켬);
+    const 판 = !크게 && s.userData.작은 ? s.userData.작은 : 큰;
+    if (판.tex && s.material.map !== 판.tex) { s.material.map = 판.tex; s.material.needsUpdate = true; }
+    const 배 = 단 === "위험" ? 1 + .12 * p : 1;
+    s.visible = 크게 || (FMS켬 && !!s.userData.작은);
+    const k = 판.px * 단위 * 배;
+    s.scale.set(k, k * 판.비, 1); s.center.set(.5, .5);
     if (!s.visible) continue;
     const q = s.position.clone().project(camera); if (q.z > 1) continue;
-    const w = s.userData.px * 배, h = w * s.userData.비;
+    const w = 판.px * 배, h = w * 판.비;
     표들.push({s, x: (q.x + 1) / 2 * W, y: (1 - q.y) / 2 * H, w, h, 순: {위험: 0, 경고: 1, 주의: 2, 정지: 3}[단] ?? 4, 거리});
   }
   /* 겹침 풀기 — 급한 것·가까운 것부터 자리를 잡고, 겹치는 표는 화면에서 위로 한 칸씩 올린다.
@@ -975,7 +1000,7 @@ function 라이브깜빡(now) {
   표들.sort((a, b) => a.순 - b.순 || a.거리 - b.거리);
   const 놓인 = [], 끌선 = [], 겹침 = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
   for (const t of 표들) {
-    const 최대 = 적음 || t.순 < 4 ? 6 : 2;
+    const 최대 = t.순 < 4 || 적음 ? 3 : 1;      // 이상 값(표가 적으면 다)은 세 칸까지 비켜 놓고, 많을 때 정상 값은 한 칸만 — 그래도 겹치면 숨긴다(가까이 가면 보임)
     let 칸 = 0, r;
     for (; 칸 <= 최대; 칸++) {
       const y = t.y - 칸 * (t.h + 3);
@@ -1130,12 +1155,14 @@ function FMS값매기기() {
     if (라이브.덮어쓰기[s.id]) Object.assign(v, 라이브.덮어쓰기[s.id]);     // 시험에서 한 센서의 상황을 정해 본다
     라이브.값.set(s.id, v);
     const 랙id = 분류(s) === "랙" ? s.id : s.랙;      // 랙에 붙은 코드·랙 안 온도 센서 → 그 랙 색
-    if (랙id && v.단계 !== "정상") { const 전 = 라이브.랙상태.get(랙id); 라이브.랙상태.set(랙id, !전 || 전 === "정지" ? v.단계 : 더나쁜(전, v.단계 === "정지" ? "정상" : v.단계)); }
+    if (랙id && v.단계 !== "정상" && !v.없음) { const 전 = 라이브.랙상태.get(랙id); 라이브.랙상태.set(랙id, !전 || 전 === "정지" ? v.단계 : 더나쁜(전, v.단계 === "정지" ? "정상" : v.단계)); }
   }
   const 붙은 = new Set(); for (const s of 라이브.센서) for (const p of 항목점들(s)) 붙은.add(p.id);
   FMS.밖알람 = [...FMS.상태.values()].filter(x => x.alarm_count && x.site_id === FMS.현장.id && !붙은.has(x.point_id)).length;
+  /* 코드를 못 찾은 항목은 설정 문제라 운영 화면(알람·3D 표)에 띄우지 않는다 — 개수만 알람 창에 (77차 「값들이 복잡해 알아볼 수 없다」) */
+  FMS.코드없음 = [...라이브.값].filter(([, v]) => v.없음).map(([id]) => id);
   const 순 = {위험: 0, 경고: 1, 주의: 2, 정지: 3};
-  라이브.알람 = [...라이브.값].filter(([, v]) => v.단계 !== "정상").map(([id, v]) => ({id, v})).sort((a, b) => 순[a.v.단계] - 순[b.v.단계]);
+  라이브.알람 = [...라이브.값].filter(([, v]) => v.단계 !== "정상" && !v.없음).map(([id, v]) => ({id, v})).sort((a, b) => 순[a.v.단계] - 순[b.v.단계]);
 }
 function FMS알람이름(id) {
   const s = 센서찾기(id), v = 라이브.값.get(id); if (!s) return id;
@@ -2765,6 +2792,7 @@ if (FMS켬) { $("source").textContent = "FMS 에 연결하는 중…"; 토큰받
 /* 시험용 손잡이 */
 window.__room3d = {덮어쓰기: (o) => { 라이브.덮어쓰기 = o || {}; },
   표보임: () => [...라이브.표].filter(([, s]) => s.visible).map(([id]) => id), 표수: () => 라이브.표.size,
+  표칩: () => [...라이브.표].filter(([, s]) => s.visible && s.userData.작은 && s.material.map === s.userData.작은.tex).map(([id]) => id),
   FMS: () => ({켬: FMS켬, 시작됨: FMS.시작됨, 현장: FMS.현장 && FMS.현장.code, 출처: FMS.출처, 점: FMS.점들.length, 밖알람: FMS.밖알람,
     값: Object.fromEntries([...라이브.값].map(([k, v]) => [k, {단계: v.단계, 글: 값글(k)}]))}), FMS로가기, 현장열기,
   라이브: () => ({켬: 라이브.켬, 센서: 라이브.센서.length, 알람: 라이브.알람.map(a => [a.id, a.v.단계]), 랙색: [...라이브.랙상태]}), 라이브켜기, 알람으로,

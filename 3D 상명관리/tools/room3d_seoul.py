@@ -142,8 +142,11 @@ def text() -> str:
     return json.dumps(build(), ensure_ascii=False, indent=1) + "\n"
 
 
+SITES = ("SEOUL", "BUSAN", "DAEJEON", "DAEGU")    # 79차 — 다른 센터 배치는 room3d_centers.py 가 만든다
+
+
 def index_text() -> str:
-    return json.dumps({"SEOUL": OUT.name}, ensure_ascii=False) + "\n"
+    return json.dumps({c: f"room3d_site_{c}.json" for c in SITES}, ensure_ascii=False) + "\n"
 
 
 def main() -> int:
