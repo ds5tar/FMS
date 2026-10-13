@@ -1,4 +1,4 @@
-# 3D 상면 화면(static/room3d.html)을 크로미엄으로 열어 보기·게이지·편집기를 시험한다 — 쓰는 법: python3 room3d_check.py <static 폴더> <그림 폴더> (playwright 필요)
+# 3D 상면 화면(static/room3d.html)을 크로미엄으로 열어 보기·게이지·실시간 미리보기·편집기·저장을 시험한다 — 쓰는 법: python3 room3d_check.py <static 폴더> <그림 폴더> (playwright 필요)
 import sys, subprocess, time, json, os
 from playwright.sync_api import sync_playwright
 
@@ -86,6 +86,22 @@ try:
         확인(abs(읽기()["방위"] - 30) < 1e-3, f"게이지 회전 막대 30° — {읽기()['방위']:.2f}°")
         pg.select_option("#g_step", "1")
         pg.click("#v_top"); 다옴(); pg.screenshot(path=f"{OUT}/02_보기_위에서.png")
+        pg.click("#v_iso"); 다옴()
+
+        # ── 실시간 미리보기 (데모 값) ──
+        pg.click("#liveBtn"); pg.wait_for_timeout(2600)
+        라 = pg.evaluate("window.__room3d.라이브()")
+        확인(라["켬"] and 라["센서"] >= 100, f"실시간 미리보기 — 가상 센서 {라['센서']}개")
+        단계들 = [a[1] for a in 라["알람"]]
+        확인(all(d in 단계들 for d in ("위험", "경고", "주의", "정지")), f"알람 단계 {단계들}")
+        확인(any(a[0].startswith("LL-") for a in 라["알람"]) and any(a[0].startswith("AC") for a in 라["알람"]), "누수·항온항습기 알람 포함")
+        확인(len(라["랙색"]) >= 3, f"랙 색 — 온도 이상 랙 {len(라['랙색'])}대")
+        확인(pg.locator("#alarms .알람").count() >= 5, "알람 창 목록")
+        pg.locator("#alarms .알람").first.click(); 다옴()
+        확인("흡기 온도" in pg.inner_text("#info") or "상태" in pg.inner_text("#info"), "알람을 누르면 그 장비로 가서 실시간 값")
+        pg.screenshot(path=f"{OUT}/03_실시간_알람.png")
+        pg.click("#liveBtn"); pg.wait_for_timeout(300)
+        확인(not pg.evaluate("window.__room3d.라이브().켬") and pg.locator("#alarms").is_hidden(), "실시간 미리보기 끄기")
         pg.click("#v_iso"); 다옴()
 
         # ── 편집기 ──
@@ -184,6 +200,18 @@ try:
         pg.wait_for_timeout(300)
         확인(개수() == n2 + 1 and 항목("T01") is not None, f"온도 센서 끌어 놓기 — T01 {항목('T01') and (항목('T01')['x'], 항목('T01')['y'])}")
         pg.screenshot(path=f"{OUT}/12_편집_센서.png")
+        # 센서는 평면에서 반지름 14 px 이상으로 보이고, 가운데에서 10 px 떨어진 곳을 눌러도 골라진다
+        pg.keyboard.press("Control+d")
+        c = 평(항목("T01")["x"], 항목("T01")["y"])
+        pg.mouse.click(c[0] + 10, c[1]); pg.wait_for_timeout(150)
+        확인(고른() == ["T01"], f"센서 가장자리를 눌러도 골라짐 — {고른()}")
+        pg.screenshot(path=f"{OUT}/12b_센서확대.png", clip={"x": c[0] - 60, "y": c[1] - 70, "width": 120, "height": 110})
+        # 센서에는 크기 손잡이가 없고 회전 손잡이만 — 그것을 끌면 돈다
+        회 = pg.evaluate("""() => { const it = window.__room3d.모형().항목.find(i => i.id === 'T01'); const 배 = window.__room3d.평면.배율;
+          const r = Math.max(14, it.w * 배 / 2) / 배; const st = document.getElementById('stage').getBoundingClientRect();
+          const [a, b] = window.__room3d.평면에서화면(it.x, it.y - r - 22 / 배); return [st.left + a, st.top + b]; }""")
+        pg.mouse.move(*회); pg.mouse.down(); pg.mouse.move(c[0] + 60, c[1], steps=6); pg.mouse.up(); pg.wait_for_timeout(150)
+        확인(abs(항목("T01")["회전"] - 90) < 1e-6 and abs(항목("T01")["w"] - 0.06) < 1e-9, f"센서 회전 손잡이 — {항목('T01')['회전']}°, 크기 그대로")
 
         # 작업 내역
         내역 = pg.evaluate("window.__room3d.내역()")
@@ -192,33 +220,134 @@ try:
         # 3D 로 보기
         pg.keyboard.press("3"); 다옴(); pg.wait_for_timeout(400)
         pg.screenshot(path=f"{OUT}/13_편집_3D.png")
+        # 3D 에서 센서 글자표를 끌면 센서가 옮겨진다
+        pg.keyboard.press("Control+d"); pg.wait_for_timeout(100)
+        t0 = 항목("T01"); s = pg.evaluate("window.__room3d.표화면('T01')")
+        pg.mouse.move(s["x"], s["y"]); pg.mouse.down(); pg.mouse.move(s["x"] + 80, s["y"] + 40, steps=8); pg.mouse.up(); pg.wait_for_timeout(300)
+        t1 = 항목("T01")
+        확인(고른() == ["T01"] and ((t1["x"] - t0["x"]) ** 2 + (t1["y"] - t0["y"]) ** 2) ** 0.5 > 0.5,
+             f"3D 에서 센서 글자표를 끌어 옮김 — ({t0['x']}, {t0['y']}) → ({t1['x']}, {t1['y']})")
+        pg.keyboard.press("Control+z"); pg.wait_for_timeout(150)
+        확인(항목("T01")["x"] == t0["x"], "3D 이동도 실행 취소됨")
+        # 보기 메뉴의 「평면 (2D)」 가 옵션 막대에 가리지 않고 눌린다
+        pg.click("#menus .메뉴:nth-child(3) > button"); pg.wait_for_timeout(150)
+        pg.locator(".메뉴.열림 .항", has_text="평면 (2D)").click(); pg.wait_for_timeout(400)
+        확인(pg.evaluate("document.getElementById('b2d').classList.contains('켬')"), "3D 에서 보기 메뉴 → 평면 (2D) 로 돌아감")
         pg.keyboard.press("2"); pg.wait_for_timeout(400)
 
-        # 저장 → 다시 열어도 남는다
+        # 저장·다른 이름으로 저장 — 윈도우 저장 창은 시험 브라우저에서 못 누르므로, 창이 돌려주는 파일 손잡이를 흉내 낸다
         확인(not pg.evaluate("window.__room3d.저장됨()"), "고치면 「저장 안 됨」")
-        pg.keyboard.press("Control+s"); pg.wait_for_timeout(200)
-        확인(pg.evaluate("window.__room3d.저장됨()") and pg.evaluate("!!localStorage.getItem('fms.room3d.layout.v2')"), "Ctrl+S 저장")
-        with pg.expect_download() as dl:
-            pg.click("#menus .메뉴:nth-child(1) > button"); pg.click("text=JSON 파일로 내려받기")
-        경로 = dl.value.path(); 내려 = json.load(open(경로, encoding="utf-8"))
-        확인(내려["판"] == 2 and len(내려["항목"]) == 개수(), f"JSON 내려받기 — {len(내려['항목'])}개")
-        pg.click("#toView"); pg.wait_for_timeout(800)
-        pg.reload(); pg.wait_for_function("window.__room3d", timeout=20000); pg.wait_for_timeout(800)
-        확인(항목("R292") is not None and 항목("T01") is not None, "다시 열어도 저장한 배치 (R292·T01)")
-        확인("브라우저에 저장된 배치" in pg.inner_text("#source"), "보기 화면에 「브라우저에 저장된 배치」")
-        pg.fill("#find", "r292"); pg.press("#find", "Enter"); 다옴()
-        pg.screenshot(path=f"{OUT}/14_보기_새랙.png")
+        pg.evaluate("""() => { window.__창 = []; window.__쓴것 = {};
+          window.__다음이름 = '1층_배치.json';
+          window.showSaveFilePicker = async (o) => { window.__창.push(o.suggestedName); const 이름 = window.__다음이름;
+            return {name: 이름, createWritable: async () => { let 글 = ''; return {write: async (t) => { 글 += t; }, close: async () => { window.__쓴것[이름] = (window.__쓴것[이름] || []).concat([글]); }}; }}; }; }""")
+        # ── 누수 감지선 마우스로 놓기 (76차) — ≋ 도구로 항온항습기 누르기 · 벽 피하기 · 길이 · 시작점 · 다른 장비로 끌기 · 일자 긋기 ──
+        def 벽침범(선):
+            """감지선 네 변 위 점 중 벽·기둥 속에 든 것 수 (가장자리 1 cm 는 봐준다)."""
+            import math
+            벽 = [w for w in pg.evaluate("window.__room3d.모형().항목") if w["종류"] in ("wall", "col")]
+            c, n = math.cos(math.radians(선.get("회전") or 0)), math.sin(math.radians(선.get("회전") or 0))
+            a, b, 수 = 선["w"] / 2, 선["d"] / 2, 0
+            for (x0, y0, x1, y1) in [(-a, -b, a, -b), (a, -b, a, b), (a, b, -a, b), (-a, b, -a, -b)]:
+                for k in range(41):
+                    lx, ly = x0 + (x1 - x0) * k / 40, y0 + (y1 - y0) * k / 40
+                    px, py = 선["x"] + lx * c - ly * n, 선["y"] + lx * n + ly * c
+                    for w in 벽:
+                        wc, wn = math.cos(math.radians(w.get("회전") or 0)), math.sin(math.radians(w.get("회전") or 0))
+                        dx, dy = px - w["x"], py - w["y"]
+                        if abs(dx * wc + dy * wn) < w["w"] / 2 - .01 and abs(-dx * wn + dy * wc) < w["d"] / 2 - .01:
+                            수 += 1; break
+            return 수
+        ac8 = 항목("AC08")
+        pg.keyboard.press("l"); pg.wait_for_timeout(150)
+        확인("둘레 감지선 길이" in pg.inner_text("#optbar"), "≋ 도구(L) — 옵션 막대에 둘레 감지선 길이")
+        pg.mouse.move(*평(ac8["x"], ac8["y"])); pg.wait_for_timeout(150)
+        pg.mouse.click(*평(ac8["x"], ac8["y"])); pg.wait_for_timeout(300)
+        선 = 항목(고른()[0])
+        둘레 = 2 * (선["w"] + 선["d"])
+        확인(선["종류"] == "s_leak_loop" and abs(둘레 - 10) < .01, f"AC08 을 누르면 둘레 감지선 {선['id']} {둘레:.2f} m")
+        확인(abs(선["x"] - ac8["x"]) < .01 and 선["y"] < ac8["y"] - .3, f"AC08 뒤 벽을 피해 앞으로 밀림 (감지선 y {선['y']:.2f} · 항온항습기 y {ac8['y']:.2f})")
+        확인(벽침범(선) == 0, "감지선이 벽·기둥에 안 묻힘")
+        pg.screenshot(path=f"{OUT}/12c_누수선_두르기.png")
+        길이칸 = pg.locator("#optbar label[data-k=감지선길이] input")
+        길이칸.fill("12"); 길이칸.press("Enter"); pg.wait_for_timeout(200)
+        선 = 항목(선["id"])
+        확인(abs(2 * (선["w"] + 선["d"]) - 12) < .02, f"옵션 막대 길이 12 m — {2 * (선['w'] + 선['d']):.2f} m")
+        w0, d0 = 선["w"], 선["d"]
+        pg.locator("#optbar button", has_text="시작점").click(); pg.wait_for_timeout(200)
+        선 = 항목(선["id"])
+        확인(선["회전"] == 90 and abs(선["w"] - d0) < 1e-6 and abs(선["d"] - w0) < 1e-6, "↻ 시작점 — 모양 그대로 시작 모서리만 다음으로")
+        ac9 = 항목("AC09")
+        # 「↻ 시작점」 으로 90° 돌아 세로가 w — 위쪽 띠를 잡는다
+        pg.mouse.move(*평(선["x"], 선["y"] - 선["w"] / 2 + .03)); pg.mouse.down()
+        pg.mouse.move(*평(ac9["x"], ac9["y"] - .3), steps=8); pg.mouse.up(); pg.wait_for_timeout(300)
+        선 = 항목(선["id"])
+        확인(abs(선["x"] - ac9["x"]) < .01 and abs(2 * (선["w"] + 선["d"]) - 12) < .02 and 벽침범(선) == 0,
+             f"감지선을 AC09 위로 끌어 놓으면 AC09 둘레로 다시 감김 (길이 12 m 그대로)")
+        pg.mouse.move(*평(19.8, 15.8)); pg.mouse.down(); pg.mouse.move(*평(24.0, 15.8), steps=6); pg.mouse.up(); pg.wait_for_timeout(250)
+        일자 = 항목(고른()[0])
+        확인(일자["종류"] == "s_leak_line" and abs(일자["w"] - 4.2) < .01, f"바닥에서 끌면 일자 감지선 {일자['w']} m (바닥타일 격자)")
+        ac10 = 항목("AC10")
+        pg.locator("#lib .타일[data-k=s_leak_loop]").click()
+        pg.mouse.click(*평(ac10["x"], ac10["y"])); pg.wait_for_timeout(300)
+        선3 = 항목(고른()[0])
+        확인(선3["종류"] == "s_leak_loop" and abs(선3["x"] - ac10["x"]) < .01 and abs(2 * (선3["w"] + 선3["d"]) - 10) < .01, "장비 타일 「누수 감지선 (둘레형)」 을 AC10 에 놓아도 둘레로")
+        pg.keyboard.press("v"); pg.wait_for_timeout(100)
 
-        # JSON 열기
+        pg.keyboard.press("Control+s"); pg.wait_for_timeout(300)
+        확인(pg.evaluate("window.__창.length") == 1, "처음 Ctrl+S 는 이름이 없어 다른 이름으로 저장 창을 엶")
+        확인(pg.evaluate("(window.__쓴것['1층_배치.json'] || []).length") == 1, "고른 PC 파일에 씀")
+        확인(pg.evaluate("Object.keys(JSON.parse(localStorage.getItem('fms.room3d.layouts.v2')))") == ["1층_배치"], "브라우저에도 같은 이름으로 둠")
+        확인("1층_배치" in pg.inner_text("#docName") and "PC 파일" in pg.inner_text("#docName"), f"제목 줄 — {pg.inner_text('#docName')}")
+        n1층 = 개수()
+        pg.mouse.click(*평(18.0, 8.5)); pg.keyboard.press("Delete"); pg.wait_for_timeout(150)
+        확인("●" in pg.inner_text("#docName"), "고치면 제목 줄에 ●")
+        pg.keyboard.press("Control+s"); pg.wait_for_timeout(300)
+        확인(pg.evaluate("window.__창.length") == 1 and pg.evaluate("window.__쓴것['1층_배치.json'].length") == 2, "두 번째 Ctrl+S 는 창 없이 같은 파일에 덮어씀")
+        확인(len(json.loads(pg.evaluate("window.__쓴것['1층_배치.json'][1]"))["항목"]) == n1층 - 1, "덮어쓴 파일에 지운 것이 반영됨")
+        pg.evaluate("window.__다음이름 = '증설안_A.json'")
+        pg.keyboard.press("Control+Shift+s"); pg.wait_for_timeout(300)
+        확인(pg.evaluate("window.__창") == ["전산실_배치.json", "1층_배치.json"], f"다른 이름으로 저장 창 — 제안 이름 {pg.evaluate('window.__창')}")
+        확인(sorted(pg.evaluate("Object.keys(JSON.parse(localStorage.getItem('fms.room3d.layouts.v2')))")) == ["1층_배치", "증설안_A"], "브라우저에 두 배치")
+        확인(pg.evaluate("localStorage.getItem('fms.room3d.current')") == "증설안_A", "보기 화면은 새 이름의 배치를 씀")
+        # 저장 창을 못 쓰는 브라우저 — 이름을 받아 내려받기
+        pg.evaluate("delete window.showSaveFilePicker")
+        pg.keyboard.press("Control+Shift+s"); pg.wait_for_timeout(200)
+        확인(pg.locator(".대화상자 input").count() == 1, "저장 창이 없으면 이름 묻는 창")
+        pg.locator(".대화상자 input").fill("야간 점검용")
+        with pg.expect_download() as dl:
+            pg.locator(".대화상자 button.주").click()
+        확인(dl.value.suggested_filename == "야간 점검용.json", f"같은 이름으로 내려받기 — {dl.value.suggested_filename}")
+        내려 = json.load(open(dl.value.path(), encoding="utf-8"))
+        확인(내려["판"] == 2 and len(내려["항목"]) == 개수(), f"내려받은 JSON — {len(내려['항목'])}개")
+        # 열기 창
+        pg.keyboard.press("Control+o"); pg.wait_for_timeout(200)
+        줄들 = pg.locator(".배치목록 .줄")
+        확인(줄들.count() == 3, f"열기 창 — 브라우저 배치 {줄들.count()}개")
+        pg.locator(".배치목록 .줄", has_text="1층_배치").locator("button.주").click(); pg.wait_for_timeout(300)
+        확인(개수() == n1층 - 1 and "1층_배치" in pg.inner_text("#docName"), "열기 창에서 1층_배치 열기")
+        pg.screenshot(path=f"{OUT}/15_편집_열기후.png")
+        # 보기 화면 — 다시 열어도 지금 배치, 배치 고르기로 바꾸기
+        pg.click("#toView"); pg.wait_for_timeout(500)
+        pg.reload(); pg.wait_for_function("window.__room3d", timeout=20000); pg.wait_for_timeout(800)
+        확인("1층_배치" in pg.inner_text("#source") and 개수() == n1층 - 1, f"다시 열면 1층_배치 — {pg.inner_text('#source')}")
+        옵션 = pg.locator("#layoutSel option").all_inner_texts()
+        확인(len(옵션) == 4, f"보기 화면 배치 고르기 — {옵션}")
+        pg.select_option("#layoutSel", "증설안_A"); 다옴()
+        확인(개수() == n1층 - 1 and "증설안_A" in pg.inner_text("#source"), "증설안_A 로 바꿔 보기")
+        pg.select_option("#layoutSel", ""); 다옴()
+        확인(개수() == 719 and pg.evaluate("localStorage.getItem('fms.room3d.current')") is None, f"처음 도면으로 보기 — {개수()}개")
+        pg.screenshot(path=f"{OUT}/16_보기_배치고르기.png")
+
+        # JSON 파일 열기 (파일 고르기 칸)
         pg.click("#toEdit"); pg.wait_for_timeout(800)
         내려["항목"] = 내려["항목"][:10]
         json.dump(내려, open(f"{OUT}/작은배치.json", "w", encoding="utf-8"), ensure_ascii=False)
         pg.set_input_files("#fileIn", f"{OUT}/작은배치.json"); pg.wait_for_timeout(400)
-        확인(개수() == 10, f"JSON 파일 열기 — {개수()}개")
+        확인(개수() == 10 and "작은배치" in pg.inner_text("#docName"), f"JSON 파일 열기 — {개수()}개, 이름 작은배치")
         pg.keyboard.press("Control+z"); pg.wait_for_timeout(200)
         확인(개수() > 600, "파일 열기도 실행 취소됨")
         pg.evaluate("localStorage.clear()")
-
         확인(not 오류, f"콘솔 오류·경고 {len(오류)}건 {오류[:3]}")
         b.close()
 finally:
