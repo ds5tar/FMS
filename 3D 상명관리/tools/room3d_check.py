@@ -96,8 +96,32 @@ try:
         확인(all(d in 단계들 for d in ("위험", "경고", "주의", "정지")), f"알람 단계 {단계들}")
         확인(any(a[0].startswith("LL-") for a in 라["알람"]) and any(a[0].startswith("AC") for a in 라["알람"]), "누수·항온항습기 알람 포함")
         확인(len(라["랙색"]) >= 3, f"랙 색 — 온도 이상 랙 {len(라['랙색'])}대")
+        # ── 87차 — 설비 세부 그림 · 타공판 · 랙 흡기 온도 색 · 지난 기록 돌려보기(데모) ──
+        정 = pg.evaluate("window.__room3d.재질정보('R001')")
+        r1 = pg.evaluate("window.__room3d.모형().항목.find(i => i.id === 'R001')")
+        이웃 = pg.evaluate("""() => { const 항 = window.__room3d.모형().항목, a = 항.find(i => i.id === 'R001');
+            return 항.filter(o => o.종류 && o.종류.startsWith('rack') && o !== a && Math.hypot(o.x - a.x, o.y - a.y) < 1.3).map(o => [o.x - a.x, o.y - a.y]); }""")
+        옆이웃x = any(abs(dx) > abs(dy) for dx, dy in 이웃)
+        확인(정 and 정["세부"] and 정["앞x"] == (not 옆이웃x), f"랙 앞면 그림 — 이웃이 붙은 쪽은 옆면, 앞면 축 {'x' if 정 and 정['앞x'] else 'z'} (R001 {r1['w']}×{r1['d']}, 이웃 {이웃[:2]})")
+        확인(pg.evaluate("window.__room3d.타공수()") >= 50, f"랙 앞 타공 바닥판 {pg.evaluate('window.__room3d.타공수()')}장")
+        pg.select_option("#t_rackmode", "온도"); pg.wait_for_timeout(2300)
+        라 = pg.evaluate("window.__room3d.라이브()")
+        온랙 = 라["랙온도"][0][0] if 라["랙온도"] else None
+        확인(len(라["랙온도"]) >= 50 and 온랙 and pg.evaluate(f"window.__room3d.재질정보('{온랙}').온도칠"), f"랙 색 「흡기 온도」 — 온도 있는 랙 {len(라['랙온도'])}대가 온도 색")
+        pg.screenshot(path=f"{OUT}/03b_랙_흡기온도색.png")
+        pg.click("#replayBtn"); pg.wait_for_timeout(600)
+        재 = pg.evaluate("window.__room3d.라이브().재생")
+        확인(재 and 재["수"] == 24 and 재["i"] == 23 and pg.is_visible("#replay"), f"⏱ 지난 기록 돌려보기 — 24시간 막대 ({재})")
+        pg.locator("#replayRange").fill("5"); pg.wait_for_timeout(300)
+        확인(pg.evaluate("window.__room3d.라이브().재생.i") == 5, "시간 막대를 끌면 그 시각으로")
+        pg.click("#replayPlay"); pg.wait_for_timeout(1600)
+        확인(pg.evaluate("window.__room3d.라이브().재생.i") >= 6, "▶ 재생 — 시각이 흘러감")
+        pg.screenshot(path=f"{OUT}/03c_기록재생.png")
+        pg.locator("#replay button", has_text="실시간으로").click(); pg.wait_for_timeout(300)
+        확인(not pg.is_visible("#replay") and pg.evaluate("window.__room3d.라이브().재생") is None and pg.evaluate("window.__room3d.라이브().켬"), "✕ 실시간으로 — 재생 닫고 실시간 그대로")
+        pg.select_option("#t_rackmode", "알람"); pg.wait_for_timeout(300)
         확인(pg.locator("#alarms .알람").count() >= 5, "알람 창 목록")
-        pg.locator("#alarms .알람").first.click(); 다옴()
+        pg.evaluate("document.querySelector('#alarms .알람').click()"); 다옴()      # 목록이 2초마다 새로 그려져 느린 시험기에서는 「안정」 을 못 기다린다
         확인("흡기 온도" in pg.inner_text("#info") or "상태" in pg.inner_text("#info"), "알람을 누르면 그 장비로 가서 실시간 값")
         pg.screenshot(path=f"{OUT}/03_실시간_알람.png")
         pg.click("#liveBtn"); pg.wait_for_timeout(300)
@@ -229,6 +253,10 @@ try:
              f"3D 에서 센서 글자표를 끌어 옮김 — ({t0['x']}, {t0['y']}) → ({t1['x']}, {t1['y']})")
         pg.keyboard.press("Control+z"); pg.wait_for_timeout(150)
         확인(항목("T01")["x"] == t0["x"], "3D 이동도 실행 취소됨")
+        # 83차 「센서의 크기를 2배로」 — 점형 센서는 화면에서 두 배(바닥 면 적어도 12 cm), 배치 값은 그대로
+        t = 항목("T01"); 그린 = pg.evaluate("window.__room3d.그린크기('T01')")
+        확인(그린 == [max(round(t["w"] * 2, 3), .12), max(round(t["d"] * 2, 3), .12), round(t["h"] * 2, 3)] and t["w"] < .1,
+             f"온도 센서 화면 크기 두 배 — 배치 {t['w']}×{t['d']}×{t['h']} m → 그림 {그린}")
         # 보기 메뉴의 「평면 (2D)」 가 옵션 막대에 가리지 않고 눌린다
         pg.click("#menus .메뉴:nth-child(3) > button"); pg.wait_for_timeout(150)
         pg.locator(".메뉴.열림 .항", has_text="평면 (2D)").click(); pg.wait_for_timeout(400)
@@ -292,6 +320,53 @@ try:
         pg.mouse.click(*평(ac10["x"], ac10["y"])); pg.wait_for_timeout(300)
         선3 = 항목(고른()[0])
         확인(선3["종류"] == "s_leak_loop" and abs(선3["x"] - ac10["x"]) < .01 and abs(2 * (선3["w"] + 선3["d"]) - 10) < .01, "장비 타일 「누수 감지선 (둘레형)」 을 AC10 에 놓아도 둘레로")
+        pg.keyboard.press("v"); pg.wait_for_timeout(100)
+        # ── 85차 「누수감지선을 일자형과 ㄱ·ㄷ·ㄹ 모양처럼 자유롭게」 — ≋ 도구로 바닥을 차례로 누르면 꺾은선 ──
+        import math
+        def 월드점(it):
+            c, n = math.cos(math.radians(it.get("회전") or 0)), math.sin(math.radians(it.get("회전") or 0))
+            return [(round(it["x"] + lx * c - ly * n, 3), round(it["y"] + lx * n + ly * c, 3)) for lx, ly in it["점들"]]
+        def 길이(it):
+            q = it["점들"]; return sum(math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]) for i in range(1, len(q)))
+        pg.keyboard.press("l"); pg.wait_for_timeout(100)
+        ㄷ = [(19.8, 17.4), (24.0, 17.4), (24.0, 19.2), (19.8, 19.2)]
+        for x, y in ㄷ:
+            pg.mouse.click(*평(x, y)); pg.wait_for_timeout(120)
+        확인(pg.evaluate("window.__room3d.꺾는중()") == 4 and "꺾은선 그리는 중" in pg.inner_text("#optbar"), "바닥을 네 번 누름 — 꺾은선 그리는 중 점 4개")
+        pg.screenshot(path=f"{OUT}/12d_꺾은선_그리는중.png")
+        pg.keyboard.press("Enter"); pg.wait_for_timeout(250)
+        꺾 = 항목(고른()[0])
+        확인(꺾["종류"] == "s_leak_path" and 월드점(꺾) == ㄷ and abs(길이(꺾) - 10.2) < 1e-6,
+             f"Enter — ㄷ자 꺾은선 감지선 {꺾['id']} {길이(꺾):.2f} m, 점 {월드점(꺾)}")
+        확인(pg.evaluate(f"window.__room3d.그린크기('{꺾['id']}')") is not None, "3D 에도 꺾은선 띠")
+        위 = pg.evaluate(f"window.__room3d.선위치('{꺾['id']}', 5.0)")
+        확인(abs(위[0] - 24.0) < 1e-6 and abs(위[1] - 18.2) < 1e-6 and abs(위[2] - 90) < 1e-6, f"누수 위치 5.0 m — 첫 점에서 4.2 m 꺾고 0.8 m 아래 {위}")
+        pg.keyboard.press("v"); pg.wait_for_timeout(100)
+        pg.mouse.move(*평(19.8, 19.2)); pg.mouse.down(); pg.mouse.move(*평(18.6, 19.2), steps=6); pg.mouse.up(); pg.wait_for_timeout(250)
+        꺾 = 항목(꺾["id"])
+        확인(월드점(꺾)[-1] == (18.6, 19.2) and abs(길이(꺾) - 11.4) < 1e-6, f"끝 점 손잡이를 끌어 옮김 — {길이(꺾):.2f} m")
+        pg.mouse.dblclick(*평(21.9, 17.4)); pg.wait_for_timeout(250)
+        꺾 = 항목(꺾["id"])
+        새점 = 월드점(꺾)[1] if len(꺾["점들"]) == 5 else None
+        확인(새점 and abs(새점[0] - 21.9) < .05 and abs(새점[1] - 17.4) < 1e-3 and abs(길이(꺾) - 11.4) < 1e-3, f"선을 더블클릭 — 그 선 위에 점 더하기 ({len(꺾['점들'])}개 · {새점})")
+        pg.mouse.move(*평(*새점)); pg.wait_for_timeout(80)
+        pg.keyboard.down("Alt"); pg.mouse.click(*평(*새점)); pg.keyboard.up("Alt"); pg.wait_for_timeout(250)
+        꺾 = 항목(꺾["id"])
+        확인(len(꺾["점들"]) == 4, f"Alt+누르기 — 점 빼기 ({len(꺾['점들'])}개)")
+        길이칸 = pg.locator("#optbar label[data-k=감지선길이] input")
+        길이칸.fill("12"); 길이칸.press("Enter"); pg.wait_for_timeout(200)
+        꺾 = 항목(꺾["id"])
+        확인(abs(길이(꺾) - 12) < .01 and abs(월드점(꺾)[-1][1] - 19.2) < .01, f"옵션 막대 길이 12 m — 마지막 토막만 늘어남 {월드점(꺾)[-1]}")
+        첫 = 월드점(꺾)[0]
+        pg.locator("#optbar button", has_text="시작점").click(); pg.wait_for_timeout(200)
+        확인(월드점(항목(꺾["id"]))[-1] == 첫, "⇄ 시작점 — 끝과 끝을 맞바꿈")
+        pg.screenshot(path=f"{OUT}/12e_꺾은선_ㄷ자.png")
+        # 그리다가 Backspace 로 한 점 지우고 Esc 로 그만두기 — 항목이 안 생김
+        n = 개수()
+        pg.keyboard.press("l"); pg.mouse.click(*평(19.8, 21.0)); pg.mouse.click(*평(22.2, 21.0)); pg.wait_for_timeout(100)
+        pg.keyboard.press("Backspace"); 한점 = pg.evaluate("window.__room3d.꺾는중()")
+        pg.keyboard.press("Escape"); pg.wait_for_timeout(100)
+        확인(한점 == 1 and not pg.evaluate("window.__room3d.꺾는중()") and 개수() == n, "Backspace 한 점 지움 · Esc 그만두기 — 새 항목 없음")
         pg.keyboard.press("v"); pg.wait_for_timeout(100)
 
         pg.keyboard.press("Control+s"); pg.wait_for_timeout(300)

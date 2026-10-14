@@ -134,6 +134,11 @@
   #liveBtn.켬{background:#fff;color:#16a34a}
   #liveOpts label{font-size:12px}
   #alarms{top:14px;left:50%;transform:translateX(-50%);width:400px;padding:10px 12px}
+  #replay{bottom:14px;left:50%;transform:translateX(-50%);width:min(760px,calc(100vw - 600px));min-width:420px;padding:8px 12px;display:flex;gap:8px;align-items:center}
+  #replay[hidden]{display:none}
+  #replay input[type=range]{flex:1;min-width:120px} #replay b{min-width:92px;font-variant-numeric:tabular-nums}
+  #replay .sub{color:var(--sub);font-size:11.5px;max-width:170px} #replay button{width:auto;margin:0;padding:4px 9px}
+  #replayBtn{margin-top:6px}
   #alarms .머리{display:flex;justify-content:space-between;align-items:center;gap:8px}
   #alarms .머리 b{font-size:13px}
   #alarms .범례{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 4px;font-size:11.5px;color:var(--sub)}
@@ -159,6 +164,43 @@
   .대화상자 .빈{color:var(--e-sub);padding:10px 0}
   .대화상자 .단추들{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
   .대화상자 .설명{color:var(--e-sub);font-size:11.5px;margin:6px 0 0}
+
+  /* ── 테마 (81차 사용자 「본 프로그램의 어두운·밝은 테마를 3D 상면이 따라가야 한다」) ──
+     관제 화면 안(iframe)에서는 관제 화면의 data-theme 을 html 에 그대로 단다(아래 「테마 맞추기」).
+     단독으로 연 화면은 data-theme 이 없어 지금 모양 그대로 — 보기는 밝게, 편집기는 어둡게.
+     어둠 — 보기 화면을 관제 화면 어둠 색으로. 편집기는 원래 어둡다 */
+  :root[data-theme="dark"]{ --ink:#e6edf3; --sub:#9fb0c3; --line:#2b3542; --panel:#161b22ee; }
+  :root[data-theme="dark"] body{background:#0e1116}
+  :root[data-theme="dark"] .panel{box-shadow:0 3px 18px #0008}
+  :root[data-theme="dark"] button{background:#1c2430}
+  :root[data-theme="dark"] button:hover{background:#243042}
+  :root[data-theme="dark"] #find, :root[data-theme="dark"] #gauge select, :root[data-theme="dark"] .g input[type=number],
+  :root[data-theme="dark"] #layoutSel{background:#0e1116;color:var(--ink)}
+  :root[data-theme="dark"] #mini{background:#0b0f14}
+  :root[data-theme="dark"] #alarms .알람:hover{background:#1c2430}
+  :root[data-theme="dark"] #liveBtn.켬{background:#0e1116}
+  :root[data-theme="dark"] #toEdit:hover{background:#0889c4}
+  /* 밝음 — 편집기도 관제 화면 밝음 색으로 */
+  :root[data-theme="light"]{ --e-bg:#eef2f7; --e-pn:#ffffff; --e-pn2:#eef2f7; --e-line:#d4dbe4; --e-ink:#16202b; --e-sub:#4a5a6b; --e-hi:#0b62c4; }
+  :root[data-theme="light"] body.편집 #stage{background:#f4f6f9}
+  :root[data-theme="light"] .e button:hover, :root[data-theme="light"] .대화상자 button:hover{background:#dfe5ec}
+  :root[data-theme="light"] .e input, :root[data-theme="light"] .e select, :root[data-theme="light"] .e textarea,
+  :root[data-theme="light"] .대화상자 input{background:#fff}
+  :root[data-theme="light"] #menubar, :root[data-theme="light"] #optbar, :root[data-theme="light"] #status{border-color:#d4dbe4}
+  :root[data-theme="light"] #tools{border-right-color:#d4dbe4}
+  :root[data-theme="light"] #panels{border-left-color:#d4dbe4}
+  :root[data-theme="light"] .판{border-bottom-color:#d4dbe4}
+  :root[data-theme="light"] #menubar .제목{color:var(--e-ink)}
+  :root[data-theme="light"] .메뉴 .아래{box-shadow:0 6px 20px #0002}
+  :root[data-theme="light"] .아래 div.항:hover kbd{color:#e6f0fb}
+  :root[data-theme="light"] .타일{background:#f8fafc}
+  :root[data-theme="light"] .타일.켬, :root[data-theme="light"] .배치목록 .줄.지금{background:#dbeafe}
+  :root[data-theme="light"] .층, :root[data-theme="light"] .배치목록 .줄{border-bottom-color:#e6ebf1}
+  :root[data-theme="light"] .층목록 div:hover, :root[data-theme="light"] .내역 div:hover{background:#e6ebf1}
+  :root[data-theme="light"] .내역 div.뒤{color:#8a96a3}
+  :root[data-theme="light"] #status .말{color:#b45309}
+  :root[data-theme="light"] .대화막{background:#0004}
+  :root[data-theme="light"] .대화상자{box-shadow:0 12px 40px #0003}
 </style>
 <script type="importmap">
 {"imports":{"three":"./vendor/three/three.module.min.js",
@@ -184,8 +226,9 @@
   <input id="find" placeholder="찾기 — 랙 R123 · 열 C1 · AC05" autocomplete="off">
   <button id="liveBtn" title="FMS 에 붙었을 때 센서 값이 어떻게 보이는지 데모 값으로 보여 줍니다">실시간 값 미리보기 ▶</button>
   <div id="liveOpts" hidden>
-    <label><input type="checkbox" id="t_rackcol" checked>랙을 흡기 온도 색으로</label>
+    <label title="랙을 무엇으로 칠할지 (87차)">랙 색 <select id="t_rackmode"><option value="알람">알람 상태</option><option value="온도">흡기 온도</option><option value="끄기">칠하지 않음</option></select></label>
     <label><input type="checkbox" id="t_heat" checked>바닥 온도 분포</label>
+    <button id="replayBtn" title="지난 온도 기록을 시간 막대로 돌려 봅니다 — 바닥 온도 분포·랙 색·값 표가 그 시각 값으로 (87차)">⏱ 지난 기록 돌려보기</button>
   </div>
   <button id="toEdit">배치 편집 ✎</button>
 </div>
@@ -283,6 +326,8 @@ const 장비 = {
   s_th:        {이름: "온습도 센서",            분류: "센서", w: .08, d: .03, h: .12, z0: 1.5, 색: 0xf97316, 접두: "TH",  글자: "온습"},
   s_leak_line: {이름: "누수 감지선",            분류: "센서", w: 3.0, d: .03, h: .01, z0: 0,   색: 0x2563eb, 접두: "LL",  글자: "수", 그림자: false},
   s_leak_loop: {이름: "누수 감지선 (둘레형)",   분류: "센서", w: 3.35, d: 1.65, h: .01, z0: 0, 색: 0x2563eb, 접두: "LR",  글자: "수", 그림자: false, 모양: "둘레"},
+  s_leak_path: {이름: "누수 감지선 (꺾은선)",   분류: "센서", w: 3.1, d: 2.1, h: .01, z0: 0,   색: 0x2563eb, 접두: "LW",  글자: "수", 그림자: false, 모양: "꺾은선",
+                점들: [[-1.5, -1], [1.5, -1], [1.5, 1]]},
   s_leak:      {이름: "누수 감지기 (점형)",     분류: "센서", w: .08, d: .08, h: .03, z0: 0,   색: 0x2563eb, 접두: "LP",  글자: "수"},
   s_smoke:     {이름: "연기 감지기",            분류: "센서", w: .12, d: .12, h: .05, z0: 3.3, 색: 0x9ca3af, 접두: "SM",  글자: "연", 모양: "원판"},
   s_heat:      {이름: "열 감지기",              분류: "센서", w: .12, d: .12, h: .05, z0: 3.3, 색: 0xdc2626, 접두: "HT",  글자: "열", 모양: "원판"},
@@ -403,6 +448,22 @@ renderer.shadowMap.type = THREE.PCFShadowMap;      // r185 에서 PCFSoft 는 �
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
 
+/* 테마 맞추기 (81차) — 관제 화면 안(iframe, 같은 출처)이면 관제 화면 html 의 data-theme(없으면 어둠)을 따라 달고,
+   테마 단추로 바뀌면 바로 따라간다. 부모가 없거나 다른 출처면 달지 않는다(단독 화면 — 지금 모양). 3D 바탕도 같이 */
+function 테마맞추기() {
+  let t = null;
+  try { if (window.parent !== window) t = parent.document.documentElement.getAttribute("data-theme") || "dark"; } catch { t = null; }
+  if (t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme");
+  scene.background = new THREE.Color(t === "dark" ? 0x0e1116 : 0xffffff);
+  try { 더러움 = true; } catch { /* 처음 부를 때는 아직 그리기 전이다 */ }
+}
+테마맞추기();
+try {
+  if (window.parent !== window) {
+    new MutationObserver(테마맞추기).observe(parent.document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+  }
+} catch { /* 다른 출처 — 부모를 볼 수 없다 */ }
+
 const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 600);
 const 평면cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
 평면cam.up.set(0, 0, -1);
@@ -441,6 +502,138 @@ function 랙옆그림() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 const 랙옆 = 랙옆그림();
+/* ── 설비 세부 그림 (87차 「화면처럼 설비의 그림을 좀더 디테일하게」) ──
+   상자 면마다 캔버스 그림을 씌운다 — 랙 앞·뒤는 42U 서버 칸·LED·타공 문, 항온항습기는 흡입 그릴·표시창·눈꽃, UPS 는 표시창·상태등,
+   배터리는 모듈 칸, 분전반은 문·창. 색은 그림에 굽고 재질 색은 흰색(곱해지지 않게). 같은 종류는 그림 하나를 나눠 쓴다.
+   어느 면이 앞인가 — 랙은 깊은 쪽(긴 변) 끝이 앞·뒤, 다른 설비는 넓은 면이 앞이다(장비[종류].앞 = "깊이"·"넓이") */
+const 색글16 = (c) => "#" + c.toString(16).padStart(6, "0");
+const 밝기 = (hex, k) => { const n = parseInt(hex.slice(1), 16), f = (v) => Math.max(0, Math.min(255, Math.round(v * k)));
+  return `rgb(${f(n >> 16 & 255)},${f(n >> 8 & 255)},${f(n & 255)})`; };
+function 캔버스(w, h, 그리기) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; 그리기(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+const 세부그림 = {
+  랙앞: (색) => 캔버스(160, 512, (g, W, H) => {
+    g.fillStyle = 밝기(색, .55); g.fillRect(0, 0, W, H);                                       // 문틀
+    g.fillStyle = "#15181c"; g.fillRect(10, 14, W - 20, H - 28);                               // 안쪽
+    const U = (H - 40) / 42; let u = 0, 시드 = 7;
+    const 난 = () => (시드 = (시드 * 9301 + 49297) % 233280) / 233280;
+    while (u < 42) {
+      const 크 = 난() < .12 ? 0 : 난() < .55 ? 1 : 난() < .8 ? 2 : 4, y = 20 + u * U;
+      if (!크) { g.fillStyle = "#23272d"; g.fillRect(14, y + 1, W - 28, U - 2); u += 1; continue; }     // 빈 칸 막이
+      const h = 크 * U - 2;
+      g.fillStyle = 크 >= 4 ? "#2f353d" : "#3a4049"; g.fillRect(14, y + 1, W - 28, h);
+      g.fillStyle = "rgba(255,255,255,.07)"; for (let x = 20; x < W - 40; x += 6) g.fillRect(x, y + 3, 3, Math.max(1, h - 4));   // 흡기 구멍
+      g.fillStyle = 난() < .9 ? "#22c55e" : "#f59e0b"; g.fillRect(W - 30, y + h / 2 - 1, 4, 3);      // 상태 LED
+      g.fillStyle = "#38bdf8"; g.fillRect(W - 22, y + h / 2 - 1, 4, 3);
+      u += 크;
+    }
+    g.fillStyle = "rgba(255,255,255,.05)"; for (let y = 16; y < H - 14; y += 5) for (let x = 12 + (y % 10 ? 0 : 2.5); x < W - 12; x += 5) g.fillRect(x, y, 1.6, 1.6);   // 타공 문
+    g.fillStyle = 밝기(색, .9); g.fillRect(W - 9, H * .42, 4, H * .16);                        // 손잡이
+  }),
+  랙옆: (색) => 캔버스(128, 512, (g, W, H) => {
+    g.fillStyle = 밝기(색, 1); g.fillRect(0, 0, W, H);
+    g.strokeStyle = 밝기(색, .7); g.lineWidth = 3; g.strokeRect(4, 4, W - 8, H - 8);
+    g.lineWidth = 2; g.beginPath(); g.moveTo(W / 2, 8); g.lineTo(W / 2, H - 8); g.stroke();
+    g.strokeStyle = 밝기(색, 1.25); g.lineWidth = 1; g.beginPath(); g.moveTo(W / 2 + 2, 8); g.lineTo(W / 2 + 2, H - 8); g.stroke();
+  }),
+  랙위: (색) => 캔버스(128, 128, (g, W, H) => {
+    g.fillStyle = 밝기(색, .8); g.fillRect(0, 0, W, H);
+    g.fillStyle = 밝기(색, .45); for (let i = 0; i < 6; i++) g.fillRect(20, 18 + i * 16, W - 40, 6);       // 배기 틈
+    g.fillStyle = 밝기(색, .35); g.fillRect(8, 8, 16, 16); g.fillRect(W - 24, 8, 16, 16);                  // 케이블 구멍
+  }),
+  공조앞: () => 캔버스(512, 400, (g, W, H) => {
+    g.fillStyle = "#eef1f4"; g.fillRect(0, 0, W, H);
+    const 문 = 3, dw = W / 문;
+    for (let i = 0; i < 문; i++) {
+      const x = i * dw;
+      g.strokeStyle = "#b9c1ca"; g.lineWidth = 3; g.strokeRect(x + 4, 4, dw - 8, H - 8);
+      g.fillStyle = "#dfe4e9"; g.fillRect(x + 14, H * .55, dw - 28, H * .4);                           // 흡입 그릴
+      g.strokeStyle = "#aeb7c1"; g.lineWidth = 2; for (let y = H * .57; y < H * .94; y += 7) { g.beginPath(); g.moveTo(x + 16, y); g.lineTo(x + dw - 16, y); g.stroke(); }
+      g.fillStyle = "#9aa4af"; g.fillRect(x + dw - 16, H * .3, 4, 40);                                    // 손잡이
+    }
+    g.fillStyle = "#1f2937"; g.fillRect(dw + 30, 40, dw - 60, 60);                                        // 표시창
+    g.fillStyle = "#34d399"; g.fillRect(dw + 40, 52, 70, 9); g.fillStyle = "#93c5fd"; g.fillRect(dw + 40, 70, 46, 7); g.fillRect(dw + 92, 70, 30, 7);
+    g.strokeStyle = "#2563eb"; g.lineWidth = 5; g.lineCap = "round";                                     // 눈꽃
+    const cx = dw * .5, cy = 80, r = 34;
+    for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3, ex = cx + Math.cos(a) * r, ey = cy + Math.sin(a) * r;
+      g.beginPath(); g.moveTo(cx, cy); g.lineTo(ex, ey); g.stroke();
+      for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + Math.cos(a) * r * .6, cy + Math.sin(a) * r * .6); g.lineTo(cx + Math.cos(a) * r * .6 + Math.cos(a + s * .8) * 12, cy + Math.sin(a) * r * .6 + Math.sin(a + s * .8) * 12); g.stroke(); } }
+  }),
+  공조옆: () => 캔버스(256, 400, (g, W, H) => {
+    g.fillStyle = "#e7ebef"; g.fillRect(0, 0, W, H); g.strokeStyle = "#c3cad2"; g.lineWidth = 3; g.strokeRect(4, 4, W - 8, H - 8);
+    g.strokeStyle = "#cfd5dc"; g.lineWidth = 2; for (let y = 30; y < 110; y += 8) { g.beginPath(); g.moveTo(24, y); g.lineTo(W - 24, y); g.stroke(); }
+  }),
+  유피에스앞: () => 캔버스(400, 520, (g, W, H) => {
+    g.fillStyle = "#d9dde2"; g.fillRect(0, 0, W, H);
+    for (const x of [6, W / 2 + 3]) { g.strokeStyle = "#a9b1ba"; g.lineWidth = 3; g.strokeRect(x, 6, W / 2 - 9, H - 12); }
+    g.fillStyle = "#1e293b"; g.fillRect(40, 50, 140, 80);                                                 // LCD
+    g.fillStyle = "#38bdf8"; g.fillRect(52, 64, 90, 10); g.fillRect(52, 84, 60, 8); g.fillStyle = "#4ade80"; g.fillRect(52, 102, 110, 8);
+    ["#22c55e", "#22c55e", "#f59e0b", "#94a3b8"].forEach((c, i) => { g.fillStyle = c; g.beginPath(); g.arc(60 + i * 26, 160, 7, 0, 7); g.fill(); });
+    g.fillStyle = "#c3c9d0"; for (let y = H * .55; y < H - 30; y += 10) { g.fillRect(30, y, W / 2 - 60, 4); g.fillRect(W / 2 + 30, y, W / 2 - 60, 4); }
+    g.fillStyle = "#8b95a1"; g.fillRect(W / 2 - 18, H * .4, 5, 50); g.fillRect(W / 2 + 13, H * .4, 5, 50);
+  }),
+  배터리앞: () => 캔버스(480, 440, (g, W, H) => {
+    g.fillStyle = "#7f8994"; g.fillRect(0, 0, W, H); g.strokeStyle = "#5f6872"; g.lineWidth = 4; g.strokeRect(4, 4, W - 8, H - 8);
+    const 줄 = 5, 칸 = 4, cw = (W - 24) / 칸, ch = (H - 24) / 줄;
+    for (let j = 0; j < 줄; j++) for (let i = 0; i < 칸; i++) {
+      const x = 12 + i * cw, y = 12 + j * ch;
+      g.fillStyle = "#3b4149"; g.fillRect(x + 4, y + 4, cw - 8, ch - 8);
+      g.fillStyle = "#ef4444"; g.fillRect(x + 12, y + 10, 10, 6); g.fillStyle = "#111827"; g.fillRect(x + cw - 22, y + 10, 10, 6);   // 단자
+      g.fillStyle = "#22c55e"; g.fillRect(x + cw / 2 - 3, y + ch - 18, 6, 4);
+    }
+  }),
+  분전반앞: () => 캔버스(256, 512, (g, W, H) => {
+    g.fillStyle = "#c9cfd6"; g.fillRect(0, 0, W, H); g.strokeStyle = "#98a1ab"; g.lineWidth = 4; g.strokeRect(6, 6, W - 12, H - 12);
+    g.fillStyle = "#334155"; g.fillRect(40, 60, W - 80, 150);                                             // 점검창
+    g.fillStyle = "#cbd5e1"; for (let i = 0; i < 6; i++) g.fillRect(52 + i * 26, 80, 16, 50);             // 차단기
+    g.fillStyle = "#facc15"; g.fillRect(W / 2 - 30, 240, 60, 40); g.fillStyle = "#111827"; g.font = "bold 28px sans-serif"; g.textAlign = "center"; g.fillText("⚡", W / 2, 272);
+    g.fillStyle = "#7c8691"; g.fillRect(W - 30, H * .45, 8, 60);
+  }),
+  타공: () => 캔버스(128, 128, (g, W, H) => {
+    g.fillStyle = "#c7ccd2"; g.fillRect(0, 0, W, H); g.strokeStyle = "#9aa2ab"; g.lineWidth = 3; g.strokeRect(1.5, 1.5, W - 3, H - 3);
+    g.fillStyle = "#59616b"; for (let y = 12; y < H - 8; y += 7) for (let x = 12; x < H - 8; x += 7) g.fillRect(x, y, 4, 4);
+  }),
+};
+const 세부종류 = {           // 종류 → [앞, 옆, 위] 그림 이름과 앞 기준
+  rack: {앞: "랙앞", 옆: "랙옆", 위: "랙위", 축: "깊이"}, rack_deep: {앞: "랙앞", 옆: "랙옆", 위: "랙위", 축: "깊이"},
+  rack_net: {앞: "랙앞", 옆: "랙옆", 위: "랙위", 축: "깊이"},
+  crac: {앞: "공조앞", 옆: "공조옆", 축: "넓이"}, inrow: {앞: "공조앞", 옆: "공조옆", 축: "깊이"},
+  ups: {앞: "유피에스앞", 옆: "공조옆", 축: "넓이"}, battery: {앞: "배터리앞", 옆: "공조옆", 축: "넓이"}, panel: {앞: "분전반앞", 옆: "공조옆", 축: "넓이"},
+};
+const 그림칸 = new Map();
+function 세부재질(종류, 앞x) {      // 앞x = 앞·뒤가 ±x 면인가 (아니면 ±z)
+  const 키 = 종류 + (앞x ? "x" : "z"); if (재질칸.has(키)) return 재질칸.get(키);
+  const k = 장비[종류], s = 세부종류[종류], 색 = 색글16(k.색);
+  const 그림 = (이름) => { if (!이름) return null; const 열쇠 = 이름 + 색; if (!그림칸.has(열쇠)) 그림칸.set(열쇠, 세부그림[이름](색)); return 그림칸.get(열쇠); };
+  const 판 = (map) => new THREE.MeshStandardMaterial({color: map ? 0xffffff : k.색, map, roughness: .78, metalness: .05});
+  const 앞 = 판(그림(s.앞)), 옆 = 판(그림(s.옆)), 위 = s.위 ? 판(그림(s.위)) : 판(null);
+  const m = 앞x ? [앞, 앞, 위, 위, 옆, 옆] : [옆, 옆, 위, 위, 앞, 앞];      // 상자 면 차례: +x −x +y −y +z −z
+  재질칸.set(키, m); return m;
+}
+/* 랙 앞이 어느 축인가 — 같은 줄의 이웃 랙과 맞닿은 면은 옆면, 비어 있는 면이 앞·뒤다(도면에 따라 랙이 긴 변으로 붙어 있기도 하다).
+   이웃이 없으면 깊은 쪽(긴 변) 끝이 앞. 장면을 다시 만들 때 칸을 비운다 */
+const 앞축칸 = new Map();
+function 랙앞x(it) {
+  const 키 = `${it.id}|${it.x}|${it.y}|${it.w}|${it.d}|${it.회전 || 0}`; if (앞축칸.has(키)) return 앞축칸.get(키);
+  const r = 라(it.회전 || 0), c = Math.cos(r), s = Math.sin(r);
+  let x이웃 = 0, z이웃 = 0;
+  for (const o of 모형.항목) {
+    if (o === it || 분류(o) !== "랙") continue;
+    const dx = o.x - it.x, dy = o.y - it.y, lx = dx * c + dy * s, lz = -dx * s + dy * c;
+    if (Math.abs(lz) < it.d * .3 && Math.abs(Math.abs(lx) - it.w) < it.w * .3) x이웃++;
+    else if (Math.abs(lx) < it.w * .3 && Math.abs(Math.abs(lz) - it.d) < it.d * .3) z이웃++;
+  }
+  const 답 = x이웃 || z이웃 ? z이웃 > x이웃 : it.w > it.d;      // ±z 로 이웃이 붙었으면 앞은 ±x
+  앞축칸.set(키, 답); return 답;
+}
+function 기본재질(it) {
+  const s = 세부종류[it.종류]; if (!s) return 재질(it.종류);
+  if (분류(it) === "랙") return 세부재질(it.종류, 랙앞x(it));
+  const 깊은x = it.w > it.d;                                  // 평면 x 가 더 긴 변
+  return 세부재질(it.종류, s.축 === "깊이" ? 깊은x : !깊은x);
+}
 const 도형 = {
   상자: new THREE.BoxGeometry(1, 1, 1),
   원판: new THREE.CylinderGeometry(.5, .5, 1, 28),
@@ -463,15 +656,50 @@ function 둘레도형(w, d) {          // 장비를 두르는 누수 감지선 �
   g.rotateX(Math.PI / 2); g.translate(0, .5, 0);
   return g;
 }
-const 감지선 = (it) => it.종류 === "s_leak_line" || it.종류 === "s_leak_loop";
-const 감지선길이 = (it) => it.종류 === "s_leak_loop" ? 2 * (it.w + it.d) : it.w;
+const 감지선 = (it) => it.종류 === "s_leak_line" || it.종류 === "s_leak_loop" || it.종류 === "s_leak_path";
+const 감지선길이 = (it) => it.종류 === "s_leak_loop" ? 2 * (it.w + it.d) : it.종류 === "s_leak_path" ? 꺾은길이(it) : it.w;
+/* 꺾은선 감지선 (85차 「일자형과 ㄱ·ㄷ·ㄹ 모양과 같이 자유롭게 직선을 그을 수 있도록」)
+   점들 = 항목 가운데(x, y)에서 본 꺾은 점 [[lx, ly], …] — 항목을 옮기거나 돌리면 점들이 같이 간다. 첫 점이 위치 0 m.
+   w·d 는 점들을 감싼 크기(고르기·사각 고르기용), 꺾은맞춤()이 다시 잰다 */
+function 꺾은점(it) {
+  const c = Math.cos(라(it.회전 || 0)), n = Math.sin(라(it.회전 || 0));
+  return (it.점들 || []).map(([lx, ly]) => [it.x + lx * c - ly * n, it.y + lx * n + ly * c]);
+}
+function 꺾은길이(it) {
+  const p = it.점들 || []; let L = 0;
+  for (let i = 1; i < p.length; i++) L += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+  return L;
+}
+function 꺾은맞춤(it) {          // 점들의 가운데를 항목 자리로 — 세계 좌표의 점은 그대로
+  const p = it.점들 || []; if (!p.length) return it;
+  const xs = p.map(q => q[0]), ys = p.map(q => q[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const c = Math.cos(라(it.회전 || 0)), n = Math.sin(라(it.회전 || 0));
+  it.x = 둘째(it.x + cx * c - cy * n); it.y = 둘째(it.y + cx * n + cy * c);
+  it.점들 = p.map(([x, y]) => [둘째(x - cx), 둘째(y - cy)]);
+  it.w = 둘째(Math.max(...xs) - Math.min(...xs) + 둘레굵기); it.d = 둘째(Math.max(...ys) - Math.min(...ys) + 둘레굵기);
+  return it;
+}
+function 꺾은도형(점들) {        // 토막마다 10 cm 띠(둘레형과 같은 굵기), 높이 1 (y −0.5~0.5) — 매시맞추기가 높이로 늘인다
+  const 위치 = [], 법선 = [];
+  for (let i = 1; i < 점들.length; i++) {
+    const [x0, y0] = 점들[i - 1], [x1, y1] = 점들[i], L = Math.hypot(x1 - x0, y1 - y0); if (L < 1e-6) continue;
+    const g = new THREE.BoxGeometry(L + 둘레굵기, 1, 둘레굵기).toNonIndexed();      // 끝을 띠 굵기만큼 늘여 꺾인 모서리를 메운다
+    g.rotateY(-Math.atan2(y1 - y0, x1 - x0)); g.translate((x0 + x1) / 2, 0, (y0 + y1) / 2);
+    위치.push(...g.attributes.position.array); 법선.push(...g.attributes.normal.array); g.dispose();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(위치, 3)); g.setAttribute("normal", new THREE.Float32BufferAttribute(법선, 3));
+  g.computeBoundingSphere(); g.computeBoundingBox();
+  return g;
+}
 const 재질칸 = new Map();
 function 재질(종류) {
   if (재질칸.has(종류)) return 재질칸.get(종류);
   const k = 장비[종류];
   let m = new THREE.MeshStandardMaterial({color: k.색, roughness: .85, metalness: 0,
     transparent: 종류 === "airflow", opacity: 종류 === "airflow" ? .6 : 1,
-    emissive: 종류 === "s_leak_loop" || 종류 === "s_leak_line" ? 0x1e4fd8 : 0x000000, emissiveIntensity: .6});
+    emissive: 감지선({종류}) ? 0x1e4fd8 : 0x000000, emissiveIntensity: .6});
   if (k.모양 === "랙") {
     const 옆 = new THREE.MeshStandardMaterial({color: k.색, roughness: .8, map: 랙옆});
     m = [옆, 옆, m, m, 옆, 옆];
@@ -483,48 +711,114 @@ const 위재질 = new THREE.MeshStandardMaterial({color: 0xf59e0b, roughness: .7
 
 let 벽자름 = true;
 const 매시들 = new Map();
+/* 점형 센서(온도·습도·온습도·누수 점형·연기·문 …)는 실물(수 cm)대로 그리면 방 전체 보기에서 점이다.
+   화면에서만 두 배, 바닥 면은 적어도 12 cm 로 그린다 — 배치 값(w·d·h)과 2D 평면은 그대로 (83차 「센서의 크기를 2배로」).
+   감지선(일자·둘레)은 76차에 따로 굵게 그린다 */
+const 센서배 = 2, 센서최소 = .12;
+const 작은센서 = (it) => 분류(it) === "센서" && !감지선(it);
 function 보이는높이(it) {
-  if (it.종류 === "s_leak_loop" || it.종류 === "s_leak_line") return Math.max(it.h, .03);     // 바닥에 묻히지 않게 3 cm
+  if (감지선(it)) return Math.max(it.h, .03);     // 바닥에 묻히지 않게 3 cm
+  if (작은센서(it)) return it.h * 센서배;
   return it.종류 === "wall" && 벽자름 ? Math.min(it.h, 1.2) : it.h;
 }
+const 보이는폭 = (it, v) => 작은센서(it) ? Math.max(v * 센서배, 센서최소) : v;
 function 매시맞추기(it) {
   let m = 매시들.get(it.id);
   const k = 장비[it.종류] || 장비.rack;
   const 둘레키 = k.모양 === "둘레" ? `${it.w.toFixed(3)}×${it.d.toFixed(3)}` : null;
-  const 도 = k.모양 === "원판" ? 도형.원판 : k.모양 === "화살표" ? 도형.화살표 : 둘레키 ? (m && m.userData.둘레 === 둘레키 ? m.geometry : null) : 도형.상자;
+  const 꺾은키 = k.모양 === "꺾은선" ? JSON.stringify(it.점들 || []) : null;
+  const 도 = k.모양 === "원판" ? 도형.원판 : k.모양 === "화살표" ? 도형.화살표 : 둘레키 ? (m && m.userData.둘레 === 둘레키 ? m.geometry : null)
+    : 꺾은키 ? (m && m.userData.꺾은 === 꺾은키 ? m.geometry : null) : 도형.상자;
   if (!m || m.geometry !== 도) {
-    if (m) { scene.remove(m); if (m.userData.둘레) m.geometry.dispose(); }
-    m = new THREE.Mesh(도 || 둘레도형(it.w, it.d), 재질(it.종류)); m.userData.둘레 = 둘레키;
+    if (m) { scene.remove(m); if (m.userData.둘레 || m.userData.꺾은) m.geometry.dispose(); }
+    m = new THREE.Mesh(도 || (꺾은키 ? 꺾은도형(it.점들 || []) : 둘레도형(it.w, it.d)), 작은센서(it) ? 숨김재질 : 기본재질(it));
+    m.userData.둘레 = 둘레키; m.userData.꺾은 = 꺾은키;
     m.castShadow = k.그림자 !== false; m.receiveShadow = true;
     scene.add(m); 매시들.set(it.id, m);
   }
   const h = 보이는높이(it);
   m.position.copy(V(it.x, it.y, (it.z0 || 0) + h / 2));
-  if (둘레키) m.scale.set(1, Math.max(h, .005), 1);
-  else m.scale.set(Math.max(it.w, .005), Math.max(h, .005), Math.max(it.d, .005));
+  if (세부종류[it.종류]) {           // 크기·방향이 바뀌어 앞면 축이 달라졌으면 그림도 바꿔 단다 (고름·상태 칠은 그대로)
+    const 기 = 기본재질(it); if (m.userData.기본 && m.material === m.userData.기본 && m.material !== 기) m.material = 기; m.userData.기본 = 기;
+  }
+  if (둘레키 || 꺾은키) m.scale.set(1, Math.max(h, .005), 1);
+  else m.scale.set(Math.max(보이는폭(it, it.w), .005), Math.max(h, .005), Math.max(보이는폭(it, it.d), .005));
   m.rotation.set(0, -라(it.회전 || 0), 0);
   m.visible = 보이나(it);
   m.userData.id = it.id;
   return m;
 }
 
-/* 센서 표 — 작은 센서를 3D 에서도 찾게, 위에 동그란 글자표를 띄운다 */
+/* 센서 표 — 작은 센서를 3D 에서도 찾게, 종류 색 동그라미에 종류 모양 아이콘을 그린다.
+   점형 센서는 이 아이콘이 곧 센서다 — 몸체 상자는 그리지 않고(누르기에만 쓴다) 아이콘을 센서 자리에 세운다 (84차 「점모양센서를 각각 형태에 맞는 아이콘으로」).
+   아이콘 모양이 없는 종류는 예전처럼 글자 */
 const 센서표그림 = new Map(), 센서표 = new Map();
+const 아이콘 = {      // 128×128 캔버스, 흰 선·면. g 는 이미 흰색·굵기 7·둥근 끝으로 맞춰 둔다
+  s_temp(g) { 온도계(g, 64, 22, 58); },
+  s_humi(g) { 물방울(g, 64, 28, 30); g.fill(); },
+  s_th(g) { 온도계(g, 46, 24, 50); 물방울(g, 86, 46, 20); g.fill(); },
+  s_leak(g) { 물방울(g, 64, 20, 24); g.fill(); 물결(g, 30, 98, 68); },
+  s_leak_line(g) { 아이콘.s_leak(g); },
+  s_leak_loop(g) { 아이콘.s_leak(g); },
+  s_leak_path(g) { 아이콘.s_leak(g); },
+  s_smoke(g) { [[44, 74, 18], [66, 60, 22], [88, 74, 18], [64, 82, 18]].forEach(([x, y, r]) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }); },
+  s_heat(g) {
+    g.beginPath(); g.moveTo(64, 22); g.bezierCurveTo(90, 50, 96, 70, 88, 88); g.bezierCurveTo(80, 106, 48, 106, 40, 88);
+    g.bezierCurveTo(34, 72, 44, 58, 52, 50); g.bezierCurveTo(52, 62, 58, 68, 62, 66); g.bezierCurveTo(56, 50, 58, 36, 64, 22); g.fill();
+  },
+  s_door(g) { g.strokeRect(42, 26, 44, 78); g.beginPath(); g.arc(76, 66, 5, 0, 7); g.fill(); g.beginPath(); g.moveTo(30, 104); g.lineTo(98, 104); g.stroke(); },
+  s_power(g) { g.beginPath(); [[72, 18], [40, 70], [62, 70], [54, 110], [90, 54], [68, 54], [72, 18]].forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.fill(); },
+  s_vib(g) {
+    g.strokeRect(50, 42, 28, 44);
+    for (const s of [-1, 1]) { g.beginPath(); for (let i = 0; i < 5; i++) g.lineTo(64 + s * (30 + (i % 2) * 10), 36 + i * 14); g.stroke(); }
+  },
+  s_dp(g) {
+    g.beginPath(); g.arc(64, 72, 38, Math.PI, 0); g.stroke();
+    g.beginPath(); g.moveTo(64, 72); g.lineTo(88, 48); g.stroke(); g.beginPath(); g.arc(64, 72, 8, 0, 7); g.fill();
+    g.beginPath(); g.moveTo(26, 96); g.lineTo(102, 96); g.stroke();
+  },
+  s_wind(g) {
+    for (const [y, 길, 감] of [[42, 62, 1], [64, 76, 1], [86, 52, -1]]) {
+      g.beginPath(); g.moveTo(24, y); g.lineTo(24 + 길, y); g.arc(24 + 길, y - 감 * 10, 10, 감 > 0 ? Math.PI / 2 : -Math.PI / 2, 감 > 0 ? -Math.PI * .9 : Math.PI * .9, 감 > 0); g.stroke();
+    }
+  },
+  s_cctv(g) {
+    g.save(); g.translate(64, 60); g.rotate(-.35); g.fillRect(-34, -16, 56, 32); g.beginPath(); g.moveTo(22, -10); g.lineTo(38, -18); g.lineTo(38, 18); g.lineTo(22, 10); g.fill(); g.restore();
+    g.beginPath(); g.moveTo(44, 74); g.lineTo(40, 100); g.lineTo(24, 100); g.stroke();
+  },
+};
+function 온도계(g, x, y, 길) {       // 세운 관 + 아래 둥근 구
+  g.beginPath(); g.moveTo(x - 8, y + 8); g.arc(x, y + 8, 8, Math.PI, 0); g.lineTo(x + 8, y + 길); g.stroke();
+  g.beginPath(); g.moveTo(x - 8, y + 8); g.lineTo(x - 8, y + 길); g.stroke();
+  g.beginPath(); g.arc(x, y + 길 + 12, 16, 0, 7); g.fill();
+  g.fillRect(x - 3, y + 20, 6, 길 - 12);
+}
+function 물방울(g, x, y, r) {        // 위가 뾰족한 물방울, 높이 약 2.6r
+  g.beginPath(); g.moveTo(x, y); g.bezierCurveTo(x + r * .4, y + r * .9, x + r, y + r * 1.3, x + r, y + r * 1.75);
+  g.arc(x, y + r * 1.75, r, 0, Math.PI); g.bezierCurveTo(x - r, y + r * 1.3, x - r * .4, y + r * .9, x, y);
+}
+function 물결(g, x, y, 길) {
+  g.beginPath(); g.moveTo(x, y); for (let i = 1; i <= 4; i++) g.quadraticCurveTo(x + 길 * (i - .5) / 4, y + (i % 2 ? -10 : 10), x + 길 * i / 4, y); g.stroke();
+}
 function 센서표재질(종류) {
   if (센서표그림.has(종류)) return 센서표그림.get(종류);
-  const k = 장비[종류], c = document.createElement("canvas"); c.width = c.height = 64;
+  const k = 장비[종류], c = document.createElement("canvas"); c.width = c.height = 128;
   const g = c.getContext("2d");
-  g.fillStyle = 색글(k.색); g.beginPath(); g.arc(32, 32, 29, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = "#fff"; g.lineWidth = 4; g.stroke();
-  g.fillStyle = "#fff"; g.font = `bold ${k.글자.length > 1 ? 20 : 28}px 'Malgun Gothic', sans-serif`;
-  g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(k.글자, 32, 34);
+  g.fillStyle = 색글(k.색); g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = "#fff"; g.lineWidth = 8; g.stroke();
+  g.fillStyle = g.strokeStyle = "#fff"; g.lineWidth = 7; g.lineCap = g.lineJoin = "round";
+  if (아이콘[종류]) 아이콘[종류](g);
+  else { g.font = `bold ${k.글자.length > 1 ? 40 : 56}px 'Malgun Gothic', sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(k.글자, 64, 68); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.SpriteMaterial({map: t, depthTest: false});
   센서표그림.set(종류, m); return m;
 }
+const 숨김재질 = new THREE.MeshBasicMaterial({visible: false});     // 점형 센서 몸체 — 안 그리고 누르기에만
+const 매달림 = (it) => (it.z0 || 0) > 2.5;                           // 천장 감지기·CCTV 는 아이콘이 아래로 매달린다
+const 아이콘크기 = .42;
 /* 열 이름표 · 600 mm 타일선 · 센서표를 모형에 맞춰 다시 만든다 */
 const 이름표 = [];
-let 타일 = null;
+let 타일 = null, 타공판 = null;
 function 덧붙이맞추기() {
   for (const s of 이름표) { scene.remove(s); s.material.map.dispose(); s.material.dispose(); }
   이름표.length = 0;
@@ -554,7 +848,30 @@ function 덧붙이맞추기() {
   g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
   타일 = new THREE.LineSegments(g, new THREE.LineBasicMaterial({color: 0x465262, transparent: true, opacity: 0.16}));
   타일.visible = 층.바닥.보임; scene.add(타일);
+  타공판맞추기();
   센서표맞추기();
+}
+/* 타공 바닥판 (87차) — 랙 앞(깊은 쪽 −끝) 바닥 한 장(600 mm). 다른 장비·벽이 덮은 자리는 건너뛴다. 장식이라 배치에 안 남긴다 */
+function 타공판맞추기() {
+  앞축칸.clear();
+  if (타공판) { scene.remove(타공판); 타공판.dispose(); 타공판 = null; }
+  const 막는 = 모형.항목.filter(o => ["랙", "공조", "전력", "건축"].includes(분류(o)) && o.종류 !== "door");
+  const 자리 = [];
+  for (const it of 모형.항목) {
+    if (분류(it) !== "랙" || !보이나(it)) continue;
+    const 깊은x = 랙앞x(it), 반 = (깊은x ? it.w : it.d) / 2 + .3;
+    const r = 라(it.회전 || 0), c = Math.cos(r), s = Math.sin(r);
+    const lx = 깊은x ? -반 : 0, ly = 깊은x ? 0 : -반, x = it.x + lx * c - ly * s, y = it.y + lx * s + ly * c;
+    if (x < .3 || y < .3 || x > 방().w - .3 || y > 방().d - .3) continue;
+    if (막는.some(o => o !== it && 안쪽(o, x, y, -.05))) continue;
+    자리.push([x, y, r]);
+  }
+  if (!자리.length) return;
+  const 판 = new THREE.MeshStandardMaterial({map: 세부그림.타공(), roughness: .9});
+  타공판 = new THREE.InstancedMesh(new THREE.PlaneGeometry(.58, .58), 판, 자리.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+  자리.forEach(([x, y, r], i) => { e.set(-Math.PI / 2, 0, -r); q.setFromEuler(e); m4.compose(V(x, y, .004), q, new THREE.Vector3(1, 1, 1)); 타공판.setMatrixAt(i, m4); });
+  타공판.receiveShadow = true; 타공판.visible = 층.바닥.보임; scene.add(타공판);
 }
 function 센서표맞추기() {
   const 있는 = new Set();
@@ -564,10 +881,13 @@ function 센서표맞추기() {
     let s = 센서표.get(it.id);
     if (!s || s.material !== 센서표재질(it.종류)) {
       if (s) scene.remove(s);
-      s = new THREE.Sprite(센서표재질(it.종류)); s.scale.set(.36, .36, 1); s.renderOrder = 12;
+      s = new THREE.Sprite(센서표재질(it.종류)); s.scale.setScalar(작은센서(it) ? 아이콘크기 : .36); s.renderOrder = 12;
       scene.add(s); 센서표.set(it.id, s);
     }
-    s.position.copy(V(it.x, it.y, (it.z0 || 0) + it.h + .2)); s.userData.id = it.id;
+    if (작은센서(it)) {      // 아이콘이 센서 자리에 선다(천장 것은 매달린다)
+      s.position.copy(V(it.x, it.y, 매달림(it) ? (it.z0 || 0) + it.h : (it.z0 || 0))); s.center.set(.5, 매달림(it) ? 1 : 0);
+    } else s.position.copy(V(it.x, it.y, (it.z0 || 0) + 보이는높이(it) + .2));
+    s.userData.id = it.id;
     s.visible = 층.센서.보임;
   }
   for (const [id, s] of 센서표) if (!있는.has(id)) { scene.remove(s); 센서표.delete(id); }
@@ -624,7 +944,7 @@ function 바닥점(ndc) {
 const 고른 = new Set();
 let 위에 = null;
 /* 실시간 미리보기 상태 — 켜면 센서 값에 따라 랙·항온항습기 색을 바꾼다 (아래 「실시간 미리보기」) */
-const 라이브 = {켬: false, 랙색: true, 바닥열: true, 덮어쓰기: {}, 센서: [], 값: new Map(), 랙상태: new Map(), 알람: [],
+const 라이브 = {켬: false, 랙칠: "알람", 랙온도: new Map(), 바닥열: true, 덮어쓰기: {}, 센서: [], 값: new Map(), 랙상태: new Map(), 알람: [],
   표: new Map(), 덧: new THREE.Group(), 열판: null, 타이머: null, 시작: 0};
 scene.add(라이브.덧);
 const 상태재질 = {
@@ -638,17 +958,18 @@ function 라이브재질(it) {
   const v = 라이브.값.get(it.id);
   if (v && v.공조 && v.단계 !== "정상") return 상태재질[v.단계];
   if (v && v.실제 && v.단계 !== "정상" && 분류(it) !== "센서" && 분류(it) !== "랙") return 상태재질[v.단계];     // FMS 값을 받은 UPS 등
-  if (라이브.랙색 && 라이브.랙상태.has(it.id)) return 상태재질[라이브.랙상태.get(it.id)];
+  if (라이브.랙칠 === "알람" && 라이브.랙상태.has(it.id)) return 상태재질[라이브.랙상태.get(it.id)];
+  if (라이브.랙칠 === "온도" && 라이브.랙온도.has(it.id) && 분류(it) === "랙") return 온도재질(라이브.랙온도.get(it.id));
   return null;
 }
 function 칠하기() {
   for (const [id, m] of 매시들) {
     const it = 찾기id.get(id); if (!it) continue;
     const 라 = 라이브재질(it);       // 실시간 미리보기에서는 상태 색이 고른 표시보다 앞선다
-    const 새 = 라 && 라 !== 상태재질.주의 ? 라 : 고른.has(id) ? 고름재질 : 위에 === id ? 위재질 : 라 || 재질(it.종류);
+    const 새 = 작은센서(it) ? 숨김재질 : 라 && 라 !== 상태재질.주의 ? 라 : 고른.has(id) ? 고름재질 : 위에 === id ? 위재질 : 라 || 기본재질(it);
     if (m.material !== 새) m.material = 새;
-    const 표 = 센서표.get(id);           // 고르거나 마우스가 올라간 센서는 글자표를 키운다
-    if (표) { const k = 고른.has(id) ? .5 : 위에 === id ? .44 : .36; 표.scale.set(k, k, 1); }
+    const 표 = 센서표.get(id);           // 고르거나 마우스가 올라간 센서는 글자표(아이콘)를 키운다
+    if (표) { const b = 작은센서(it) ? 아이콘크기 : .36, k = 고른.has(id) ? b * 1.4 : 위에 === id ? b * 1.2 : b; 표.scale.set(k, k, 1); }
   }
   더러움 = true;
 }
@@ -809,10 +1130,11 @@ function 텍스처(옛, c) {            // 같은 크기면 그림만 바꾸고,
 function 표맞추기(id, 위치, 줄들, 단, 넓게, 크기) {
   let s = 라이브.표.get(id);
   const c = 표그림(줄들, 단, 넓게);
+  if (s) s.userData.줄 = 줄들;
   if (!s) {
     /* 화면 크기가 늘 같은 표 — 가까이 가도 화면을 덮지 않고, 멀리서도 읽힌다 */
     s = new THREE.Sprite(new THREE.SpriteMaterial({depthTest: false, sizeAttenuation: false})); s.renderOrder = 20; s.userData.id = id;
-    라이브.덧.add(s); 라이브.표.set(id, s);
+    라이브.덧.add(s); 라이브.표.set(id, s); s.userData.줄 = 줄들;
   }
   const 큰 = s.userData.큰 = {tex: 텍스처(s.userData.큰 && s.userData.큰.tex, c), px: 크기 * c.width / (넓게 ? 340 : 190), 비: c.height / c.width};
   if (단 === "정상") {               // 멀리서 쓰는 작은 칩 (화면에서 글자 높이 약 11 px)
@@ -831,6 +1153,27 @@ function 열색(v) {
     return ca.map((x, k) => x + (cb[k] - x) * t);
   }
   return 열색표[열색표.length - 1][1];
+}
+/* 랙 흡기 온도 색 (87차, Sunbird 3D 색칠) — 바닥 온도 분포와 같은 색표, 0.5℃ 칸마다 재질 하나 */
+const 온도재질칸 = new Map();
+function 온도재질(v) {
+  const 칸 = Math.round(v * 2) / 2; if (온도재질칸.has(칸)) return 온도재질칸.get(칸);
+  const [r, g, b] = 열색(칸), m = new THREE.MeshStandardMaterial({color: new THREE.Color(`rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`), roughness: .7});
+  온도재질칸.set(칸, m); return m;
+}
+function 랙온도맞추기() {     // 랙마다 붙은 센서(랙 코드·랙 안 온도 센서)의 가장 높은 온도
+  라이브.랙온도.clear();
+  for (const s of 라이브.센서) {
+    const v = 라이브.값.get(s.id), 랙id = 분류(s) === "랙" ? s.id : s.랙;
+    if (랙id && v && v.온도 != null && !v.없음) 라이브.랙온도.set(랙id, Math.max(라이브.랙온도.get(랙id) ?? -99, v.온도));
+  }
+}
+/* 알람 개수 줄 (87차, Siemens 3D Alarm Viewer 말풍선) — 센서가 여럿 붙은 장비(항온항습기·UPS 등)에서 이상인 것만 단계별로 센다 */
+function 알람수글(id) {
+  const v = 라이브.값.get(id); if (!v || !v.점들 || v.점들.length < 2) return null;
+  const 셈 = {위험: 0, 경고: 0, 주의: 0}; for (const x of v.점들) if (셈[x.단] != null) 셈[x.단]++;
+  const 글 = Object.entries(셈).filter(([, n]) => n).map(([단, n]) => `${단} ${n}`).join(" · ");
+  return 글 ? `⚠ ${글} / 센서 ${v.점들.length}` : null;
 }
 function 열판맞추기() {
   const 점들 = [];
@@ -863,6 +1206,15 @@ function 선위치(s, 위치) {         // 선 시작점에서 위치(m) 떨어�
     const 변 = [[-a, -b, 1, 0, s.w, 0], [a, -b, 0, 1, s.d, 90], [a, b, -1, 0, s.w, 180], [-a, b, 0, -1, s.d, 270]];
     for (const [x0, y0, dx, dy, L, 각] of 변) {
       if (t <= L + 1e-9) { const lx = x0 + dx * t, ly = y0 + dy * t; return [s.x + lx * c - ly * n, s.y + lx * n + ly * c, (s.회전 || 0) + 각]; }
+      t -= L;
+    }
+  }
+  if (s.종류 === "s_leak_path") {    // 꺾은선 — 첫 점에서 점 차례대로 잰 거리 (85차)
+    const p = 꺾은점(s); if (p.length < 2) return [s.x, s.y, s.회전 || 0];
+    let t = 위치 == null ? 꺾은길이(s) / 2 : Math.max(0, 위치);
+    for (let i = 1; i < p.length; i++) {
+      const [x0, y0] = p[i - 1], [x1, y1] = p[i], L = Math.hypot(x1 - x0, y1 - y0), 각 = Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI;
+      if (t <= L + 1e-9 || i === p.length - 1) { const f = L ? Math.min(t, L) / L : 0; return [x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 각]; }
       t -= L;
     }
   }
@@ -909,15 +1261,18 @@ function 라이브그리기() {
       else if (라이브.표.has(s.id)) { 라이브.덧.remove(라이브.표.get(s.id)); 라이브.표.delete(s.id); }
       continue;
     }
-    const 위 = s.랙 ? 2.45 : (s.z0 || 0) + (s.h || .1) + .5;
-    if (FMS켬) 표맞추기(s.id, V(s.x, s.y, 분류(s) === "랙" ? s.h + .45 : 위), [...값글(s.id), 표이름(s)], v.단계, false, 92);
+    const 위 = s.랙 ? 2.45 : s.종류 && 작은센서(s) && !매달림(s) ? (s.z0 || 0) + 아이콘크기 + .3      // 아이콘 위 (84차)
+      : (s.z0 || 0) + (s.h ? 보이는높이(s) : .1) + .5;
+    const 셈 = FMS켬 ? 알람수글(s.id) : null;
+    if (FMS켬) 표맞추기(s.id, V(s.x, s.y, 분류(s) === "랙" ? s.h + .45 : 위), [...값글(s.id), ...(셈 ? [셈] : []), 표이름(s)], v.단계, false, 92);
     else 표맞추기(s.id, V(s.x, s.y, 위), 값글(s.id), v.단계, false, s.종류 === "s_th" ? 104 : 74);
   }
   for (const c of 모형.항목) if (c.종류 === "crac" && 라이브.값.has(c.id) && !라이브.값.get(c.id).없음) {
     const v = 라이브.값.get(c.id);
-    표맞추기(c.id, V(c.x, c.y, c.h + .85), 값글(c.id), v.단계, true, 176);
+    const 셈 = FMS켬 ? 알람수글(c.id) : null;
+    표맞추기(c.id, V(c.x, c.y, c.h + .85), [...값글(c.id), ...(셈 ? [셈] : [])], v.단계, true, 176);
   }
-  감지선맞추기(); 열판맞추기(); 칠하기(); 알람그리기();
+  랙온도맞추기(); 감지선맞추기(); 열판맞추기(); 칠하기(); 알람그리기();
   if (고른.size === 1) 정보();
 }
 function 알람그리기() {
@@ -950,15 +1305,17 @@ function 라이브켜기(켬) {
   $("liveBtn").textContent = FMS켬 ? (켬 ? "실시간 값 끄기 ■" : "FMS 실시간 값 ▶") : 켬 ? "실시간 미리보기 끄기 ■" : "실시간 값 미리보기 ▶";
   $("liveOpts").hidden = !켬;
   clearInterval(라이브.타이머);
-  for (const s of 센서표.values()) s.visible = !켬 && 층.센서.보임;     // 켜면 글자표 대신 값 표
+  for (const [id, s] of 센서표) { const it = 찾기id.get(id);          // 켜면 글자표 대신 값 표 — 점형 센서 아이콘은 센서 그 자체라 그대로 (84차)
+    s.visible = 층.센서.보임 && (!켬 || (it && 작은센서(it))); }
+  if (!켬 && 재생.켬) { 재생정지(); 재생.켬 = false; if (재생.판) 재생.판.hidden = true; }
   if (켬 && FMS켬) {
     라이브.센서 = FMS센서();
     const 한번 = async () => { try { await FMS값받기(); } catch (e) { FMS.머리말 = "값을 받지 못했습니다 — " + e.message; }
-      if (!라이브.켬) return; FMS값매기기(); 라이브그리기(); };
+      if (!라이브.켬 || 재생.켬) return; FMS값매기기(); 라이브그리기(); };
     한번(); 라이브.타이머 = setInterval(한번, FMS.주기);
   } else if (켬) {
     라이브.센서 = 미리보기센서(); 라이브.시작 = performance.now();
-    const 한번 = () => { 값매기기((performance.now() - 라이브.시작) / 1000 + 100); 라이브그리기(); };
+    const 한번 = () => { if (재생.켬) return; 값매기기((performance.now() - 라이브.시작) / 1000 + 100); 라이브그리기(); };
     한번(); 라이브.타이머 = setInterval(한번, 2000);
   } else {
     for (const o of [...라이브.덧.children]) { 라이브.덧.remove(o); }
@@ -969,7 +1326,96 @@ function 라이브켜기(켬) {
   더러움 = true;
 }
 $("liveBtn").onclick = () => 라이브켜기(!라이브.켬);
-$("t_rackcol").onchange = e => { 라이브.랙색 = e.target.checked; 칠하기(); };
+$("t_rackmode").onchange = e => { 라이브.랙칠 = e.target.value; 칠하기(); };
+$("replayBtn").onclick = () => 재생열기(24);
+/* ── 지난 기록 돌려보기 (87차 — 타업체 비교 1순위, Sunbird 열지도 타임랩스) ──
+   FMS: 배치한 센서 가운데 온도 점의 1시간 평균(/api/points/{id}/series?bucket=1h)을 받아, 시각마다 바닥 온도 분포·랙 색·값 표를 그 값으로 다시 그린다.
+   온도 밖의 값(누수·전력·항온항습기)은 지금 값 그대로 — 머리말에 적는다. 단계 색은 화면 온도 문턱(27/30/32℃)으로 (지난 알람 단계는 따로 안 받는다).
+   재생 중에는 실시간 받기를 멈추고, 닫으면 다시 켠다. 데모(파일로 열기)는 가상 값의 시간을 거꾸로 돌린다 */
+const 재생 = {켬: false, 시각들: [], i: 0, 값: new Map(), 타이머: null, 판: null, 시간: 24, 데모기준: 100, 받은: null};
+const 시각글 = (t) => { const d = new Date(t * 1000), z = (n) => String(n).padStart(2, "0"); return `${d.getMonth() + 1}/${d.getDate()} ${z(d.getHours())}:00`; };
+function 재생정지() { clearInterval(재생.타이머); 재생.타이머 = null; }
+function 재생판() {
+  if (!재생.판) {
+    재생.판 = 엘("div", {id: "replay", class: "panel 보기만"},
+      엘("button", {id: "replayPlay", textContent: "▶", title: "재생·멈춤", onclick: 재생돌리기}),
+      엘("input", {type: "range", id: "replayRange", min: 0, max: 0, value: 0, oninput: e => { 재생정지(); 재생보기(+e.target.value); }}),
+      엘("b", {id: "replayTime"}),
+      엘("select", {id: "replaySpan", title: "돌려 볼 기간", onchange: e => 재생열기(+e.target.value)},
+        엘("option", {value: "24", textContent: "24시간"}), 엘("option", {value: "168", textContent: "7일"})),
+      엘("span", {id: "replayNote", class: "sub"}),
+      엘("button", {textContent: "✕ 실시간으로", title: "지금 값으로 돌아갑니다", onclick: 재생닫기}));
+    document.body.append(재생.판);
+  }
+  재생.판.hidden = false;
+}
+function 재생판그리기() {
+  if (!재생.판) return;
+  const 막 = $("replayRange"); 막.max = String(Math.max(0, 재생.시각들.length - 1)); 막.value = String(재생.i);
+  $("replayTime").textContent = 재생.시각들.length ? 시각글(재생.시각들[재생.i]) : "—";
+  $("replayPlay").textContent = 재생.타이머 ? "❚❚" : "▶";
+  $("replaySpan").value = String(재생.시간);
+  $("replayNote").textContent = !FMS켬 ? "데모 — 가상 값의 지난 시간" : !재생.받은 ? "기록을 받는 중…"
+    : `온도 센서 ${재생.받은.센서}개 · 1시간 평균${재생.받은.실패 ? ` · 못 받음 ${재생.받은.실패}` : ""}`;
+}
+async function 재생열기(시간 = 24) {
+  if (!라이브.켬) 라이브켜기(true);
+  clearInterval(라이브.타이머); 재생정지();
+  const 차례 = 재생.차례 = (재생.차례 || 0) + 1;
+  재생.켬 = true; 재생.시간 = 시간; 재생.받은 = null; 재생.값 = new Map();
+  const 지금 = Math.floor(Date.now() / 3600000) * 3600, 시작 = 지금 - 시간 * 3600;
+  재생.시각들 = []; for (let t = 시작 + 3600; t <= 지금; t += 3600) 재생.시각들.push(t);
+  재생.i = 재생.시각들.length - 1; 재생판(); 재생판그리기();
+  if (FMS켬) {
+    const 할일 = [];
+    for (const s of 라이브.센서) for (const p of 항목점들(s)) if (점종류(p) === "온도") 할일.push([s.id, p.id]);
+    let k = 0, 실패 = 0; const 값 = new Map();
+    const 일꾼 = async () => { while (k < 할일.length) { const [sid, pid] = 할일[k++];
+      try {
+        const b = await fms(`/api/points/${pid}/series?since=${시작}&until=${지금 + 3600}&bucket=1h`);
+        const m = 값.get(sid) || new Map();
+        for (const r of b.series || []) if (r.avg_val != null) { const h = Math.round(r.ts / 3600) * 3600; if (!m.has(h)) m.set(h, +r.avg_val); }
+        값.set(sid, m);
+      } catch { 실패++; } } };
+    await Promise.all(Array.from({length: Math.min(6, 할일.length)}, 일꾼));
+    if (차례 !== 재생.차례 || !재생.켬) return;
+    재생.값 = 값; 재생.받은 = {센서: [...값.values()].filter(m => m.size).length, 점: 할일.length, 실패};
+  } else 재생.데모기준 = (performance.now() - 라이브.시작) / 1000 + 100;
+  재생보기(재생.시각들.length - 1);
+}
+function 재생보기(i) {
+  if (!재생.켬 || !재생.시각들.length) return;
+  재생.i = Math.max(0, Math.min(재생.시각들.length - 1, i));
+  const t = 재생.시각들[재생.i];
+  if (FMS켬) {
+    FMS값매기기();                        // 지금 값에서 시작해 온도 센서만 그 시각 값으로
+    for (const s of 라이브.센서) {
+      const m = 재생.값.get(s.id), v = 라이브.값.get(s.id); if (!m || !v || v.공조 || v.없음) continue;
+      let 온 = m.get(t); for (let k = 1; k <= 2 && 온 == null; k++) 온 = m.get(t - k * 3600) ?? m.get(t + k * 3600);
+      if (온 == null) { Object.assign(v, {온도: null, 습도: null, 글: ["기록 없음"], 단계: "정지"}); continue; }
+      Object.assign(v, {온도: 온, 습도: null, 글: [소수(온) + "℃"], 단계: 온도단계(온)});
+    }
+    라이브.랙상태.clear();
+    for (const s of 라이브.센서) {
+      const v = 라이브.값.get(s.id), 랙id = 분류(s) === "랙" ? s.id : s.랙;
+      if (랙id && v && v.단계 !== "정상" && !v.없음) 라이브.랙상태.set(랙id, 더나쁜(라이브.랙상태.get(랙id) || "정상", v.단계));
+    }
+    const 순 = {위험: 0, 경고: 1, 주의: 2, 정지: 3};
+    라이브.알람 = [...라이브.값].filter(([, v]) => v.단계 !== "정상" && !v.없음).map(([id, v]) => ({id, v})).sort((a, b) => 순[a.v.단계] - 순[b.v.단계]);
+    FMS.머리말 = `⏱ 기록 재생 ${시각글(t)} · 온도만 기록값`;
+  } else 값매기기(재생.데모기준 - (재생.시각들.length - 1 - 재생.i) * 45);
+  라이브그리기(); 재생판그리기();
+}
+function 재생돌리기() {
+  if (재생.타이머) { 재생정지(); 재생판그리기(); return; }
+  if (재생.i >= 재생.시각들.length - 1) 재생보기(0);
+  재생.타이머 = setInterval(() => { if (재생.i >= 재생.시각들.length - 1) { 재생정지(); 재생판그리기(); return; } 재생보기(재생.i + 1); }, 700);
+  재생판그리기();
+}
+function 재생닫기() {
+  재생정지(); 재생.켬 = false; 재생.차례 = (재생.차례 || 0) + 1; if (재생.판) 재생.판.hidden = true;
+  if (라이브.켬) 라이브켜기(true);
+}
 $("t_heat").onchange = e => { 라이브.바닥열 = e.target.checked; if (라이브.열판) 라이브.열판.visible = 라이브.바닥열; 더러움 = true; };
 function 라이브깜빡(now) {
   const p = .5 + .5 * Math.sin(now / 230);
@@ -977,7 +1423,7 @@ function 라이브깜빡(now) {
   /* px → 스프라이트 크기. 이상 값(위험·경고·주의·미수신)은 늘 크게 — 이름 줄까지.
      정상 값은 가까이(26 m, 항온항습기 42 m) 가면 크게, 멀리서는 값 한 줄 작은 칩 (77차 「정상값은 작게, 장애는 지금처럼」).
      「가까이」 는 방 크기에 비례 — 서울(긴 변 52 m)은 26 m 그대로, 14 m 방은 7 m. 작은 방은 전체 보기도 26 m 안이고
-     표가 20개 이하라 정상 값이 늘 큰 표가 되어 복잡했다 (79차). FMS 에서는 표가 적어도 정상 값은 칩.
+     표가 20개 이하라 정상 값이 늘 큰 표가 되어 복잡했다 (82차). FMS 에서는 표가 적어도 정상 값은 칩.
      데모 미리보기(파일로 열기)는 예전처럼 정상 값을 멀리서 숨긴다(표가 20개 이하면 크게) — 가상 센서가 114개라 칩도 덮는다 */
   const 단위 = 1 / (camera.projectionMatrix.elements[5] * H / 2), 적음 = 라이브.표.size <= 20, 표들 = [];
   const 방비 = Math.min(1, Math.max(모형.방.w, 모형.방.d) / 52);
@@ -1097,11 +1543,12 @@ function FMS값(it) {
   const ps = 항목점들(it);
   if (!ps.length) return {실제: true, 없음: true, 단계: "정지", 글: [`코드 ${it.점} 없음`], 점들: []};
   const 지금 = Date.now() / 1000, v = {실제: true, 점들: []};
-  let 단 = "정상", 받음 = 0;
+  let 단 = "정상", 받음 = 0, 알람 = 0, 예측 = 0;
   for (const p of ps) {
     const L = p.latest || {}, st = FMS.상태.get(p.id) || {}, 새 = L.ts && 지금 - L.ts <= FMS.정체 && L.value_num != null;
     const 등 = st.alarm_count ? 등급단계(st.worst_level) : "정상", 종 = 점종류(p), 값 = 새 ? L.value_num : null;
     단 = 더나쁜(단, 등); if (새) 받음++;
+    알람 += st.alarm_count || 0; 예측 += st.pred_count || 0;
     v.점들.push({p, 값, 종, 단: 등});
     if (값 == null) continue;
     if (종 === "온도") v.온도 ??= 값;
@@ -1124,6 +1571,8 @@ function FMS값(it) {
   else if (v.온도 != null || v.습도 != null) v.글 = [[v.온도 != null ? 소수(v.온도) + "℃" : "", v.습도 != null ? 소수(v.습도, 0) + "%" : ""].filter(x => x).join(" · ")];
   else if (v.풍속 != null) v.글 = [소수(v.풍속, 2) + " m/s"];
   else v.글 = v.점들.filter(x => x.값 != null).slice(0, 2).map(x => `${점이름(x.p).replace(it.점, "").trim() || x.p.tag} ${점값글(x)}`);
+  /* 알람이 전부 장애예측이 낸 것이면 그렇다고 적는다 (78차 — 값은 평소인데 「주의」 라 임계를 넘은 줄 알았다) */
+  if (알람 && 예측 >= 알람 && v.글 && v.글.length) { v.예측 = true; v.글 = [v.글[0] + " · 예측 이상", ...v.글.slice(1)]; }
   return v;
 }
 function FMS센서() {
@@ -1210,6 +1659,7 @@ async function 기본배치(코드) {
   } catch { return null; }
 }
 async function 현장열기(sid) {
+  if (재생.켬) { 재생정지(); 재생.켬 = false; 재생.차례 = (재생.차례 || 0) + 1; if (재생.판) 재생.판.hidden = true; }    // 다른 현장 — 재생은 닫는다 (87차)
   const s = FMS.현장들.find(x => x.id === sid) || FMS.현장들[0];
   if (!s) { 알림("볼 수 있는 현장이 없습니다", "관리자에게 현장 권한을 물어보세요."); return; }
   if (편집중 && !저장됨 && FMS.현장 && s.id !== FMS.현장.id && !confirm("저장하지 않은 바뀐 것이 있습니다. 다른 현장으로 갈까요?")) { FMS출처표시(); return; }
@@ -1330,7 +1780,7 @@ function 정보() {
     if (it.열) 줄("열", it.열);
     줄("위치", `X ${it.x.toFixed(2)} m · Y ${it.y.toFixed(2)} m`);
     줄("크기", `${it.w.toFixed(2)} × ${it.d.toFixed(2)} × ${it.h.toFixed(2)} m`);
-    if (감지선(it)) 줄("감지선 길이", `${감지선길이(it).toFixed(1)} m${it.종류 === "s_leak_loop" ? " (왼쪽 위 모서리부터 시계 방향)" : ""}`);
+    if (감지선(it)) 줄("감지선 길이", `${감지선길이(it).toFixed(1)} m${it.종류 === "s_leak_loop" ? " (왼쪽 위 모서리부터 시계 방향)" : it.종류 === "s_leak_path" ? ` (첫 점부터 · 꺾은 점 ${(it.점들 || []).length}개)` : ""}`);
     if (it.회전) 줄("회전", `${it.회전}°`);
     if (it.점) 줄("센서 코드", it.점);
     if (it.메모) 줄("메모", it.메모);
@@ -1669,7 +2119,7 @@ const 도구들 = [
   {키: "돋보기", 글: "⌕", 단축: "Z", 설명: "돋보기 — 누르면 확대, Alt 와 함께 누르면 축소합니다"},
   {키: "벽",     글: "▭", 단축: "B", 설명: "벽 그리기 — 끌어서 벽을 긋습니다. Shift = 45° 씩"},
   {키: "자",     글: "⟷", 단축: "I", 설명: "자 — 끌어서 거리를 잽니다"},
-  {키: "누수선", 글: "≋", 단축: "L", 설명: "누수 감지선 — 항온항습기·UPS·랙을 누르면 둘레에 감지선을 두릅니다. 바닥에서 끌면 일자 감지선을 긋습니다 (Shift = 45°)"},
+  {키: "누수선", 글: "≋", 단축: "L", 설명: "누수 감지선 — 항온항습기·UPS·랙을 누르면 둘레에 감지선을 두릅니다. 바닥에서 끌면 일자, 바닥을 차례로 누르면 ㄱ·ㄷ·ㄹ 꺾은선 (더블클릭·Enter 끝, Shift = 45°)"},
 ];
 
 /* ── 작업 내역 (실행 취소) ── */
@@ -1705,6 +2155,7 @@ function 새아이디(종류) {
 function 새항목(종류, x, y, 더 = {}) {
   const k = 장비[종류];
   const it = {id: 새아이디(종류), 종류, 이름: k.이름, x: 둘째(x), y: 둘째(y), w: k.w, d: k.d, h: k.h, z0: k.z0 || 0, 회전: 0, ...더};
+  if (k.점들 && !더.점들) it.점들 = k.점들.map(q => [...q]);
   if (k.분류 === "랙") it.열 = it.열 || "";
   모형.항목.push(it); 찾기id.set(it.id, it);
   return it;
@@ -1753,10 +2204,17 @@ function 누수선두르기(장, 선 = null, 더 = {}) {
 function 감지선길이바꾸기(선, L) {
   if (!(L > .2)) return;
   if (선.종류 === "s_leak_line") 선.w = 둘째(L);
+  else if (선.종류 === "s_leak_path") {        // 마지막 토막을 그 방향으로 늘이거나 줄인다 (85차)
+    const p = 선.점들, n = p.length; if (n < 2) return;
+    const [ax, ay] = p[n - 2], [bx, by] = p[n - 1], 토막 = Math.hypot(bx - ax, by - ay), 새 = 토막 + (L - 꺾은길이(선));
+    if (!(새 > .1) || !토막) { 상태(`마지막 토막이 너무 짧아집니다 — ${L} m 로 바꿀 수 없습니다`); 옵션그리기(); return; }
+    p[n - 1] = [둘째(ax + (bx - ax) * 새 / 토막), 둘째(ay + (by - ay) * 새 / 토막)]; 꺾은맞춤(선);
+  }
   else { const 차 = (L - 2 * (선.w + 선.d)) / 4; 선.w = 둘째(Math.max(.2, 선.w + 차)); 선.d = 둘째(Math.max(.2, 선.d + 차)); }
   바꾼것맞추기([선]); 기록("감지선 길이");
 }
 function 시작점돌리기(선) {       // 시작(0 m) 모서리를 시계 방향 다음 모서리로 — 모양·자리는 그대로
+  if (선.종류 === "s_leak_path") { 선.점들.reverse(); 바꾼것맞추기([선]); 기록("감지선 시작점 바꾸기"); 덧그리기(); return; }    // 꺾은선은 끝과 끝을 맞바꾼다
   선.회전 = 각정리((선.회전 || 0) + 90); [선.w, 선.d] = [선.d, 선.w];
   바꾼것맞추기([선]); 기록("감지선 시작점 바꾸기"); 덧그리기();
 }
@@ -2033,7 +2491,7 @@ $("tools").append(엘("div", {class: "칸"}),
   엘("button", {class: "작", id: "b2d", textContent: "2D", title: "평면에서 고칩니다 (2)", onclick: () => 편집보기바꾸기("2D")}),
   엘("button", {class: "작", id: "b3d", textContent: "3D", title: "3D 로 봅니다 (3)", onclick: () => 편집보기바꾸기("3D")}));
 function 도구고르기(키) {
-  도구 = 키; 자표시 = 키 === "자" ? 자표시 : null;
+  도구 = 키; 자표시 = 키 === "자" ? 자표시 : null; if (키 !== "누수선") 꺾는중 = null;
   for (const [k, b] of 도구단추) b.classList.toggle("켬", k === 키);
   옵션그리기(); 덧그리기(); 커서();
 }
@@ -2190,11 +2648,16 @@ function 옵션그리기() {
     const 수칸 = (이름, 키, 단위, step, 최소) => 엘("label", {}, 이름, 엘("input", {type: "number", step, value: (+it[키] || 0).toFixed(키 === "회전" ? 1 : 3), "data-k": 키,
       onchange: e => { let v = +e.target.value; if (최소 != null) v = Math.max(최소, v);
         it[키] = 키 === "회전" ? 각정리(v) : 둘째(v); 바꾼것맞추기([it]); 덧붙이맞추기(); 기록(이름 + " 바꾸기"); }}), 단위);
-    바.append(수칸("X", "x", "m", .01), 수칸("Y", "y", "m", .01), 수칸("폭", "w", "m", .01, .005), 수칸("깊이", "d", "m", .01, .005),
+    if (it.종류 === "s_leak_path") 바.append(수칸("X", "x", "m", .01), 수칸("Y", "y", "m", .01), 수칸("회전", "회전", "°", 1), 엘("span", {class: "칸"}));   // 모양은 꺾은 점으로 (85차)
+    else 바.append(수칸("X", "x", "m", .01), 수칸("Y", "y", "m", .01), 수칸("폭", "w", "m", .01, .005), 수칸("깊이", "d", "m", .01, .005),
       수칸("높이", "h", "m", .01, .005), 수칸("바닥에서", "z0", "m", .01), 수칸("회전", "회전", "°", 1), 엘("span", {class: "칸"}));
     if (감지선(it)) {
       바.append(엘("label", {"data-k": "감지선길이", title: "감지선 전체 길이 — 둘레형은 같은 가운데에서 둘레가 이 길이가 되게 늘이거나 줄입니다"}, "길이",
         엘("input", {type: "number", step: .1, value: 감지선길이(it).toFixed(1), onchange: e => 감지선길이바꾸기(it, +e.target.value)}), "m"));
+      if (it.종류 === "s_leak_path") {
+        바.append(엘("span", {style: "color:var(--e-sub)", textContent: `꺾은 점 ${it.점들.length}개 — 네모 손잡이를 끌어 옮기고, 선을 더블클릭하면 점 더하기, Alt+누르면 점 빼기`}),
+          엘("button", {textContent: "⇄ 시작점", title: "0 m 시작(파란 점)을 반대쪽 끝으로 — 실물 감지선이 제어기에 이어진 쪽과 맞춥니다", onclick: () => 시작점돌리기(it)}));
+      }
       if (it.종류 === "s_leak_loop") {
         const 장 = 장비찾기(it);
         바.append(엘("button", {textContent: "↻ 시작점", title: "0 m 시작 모서리(파란 점)를 시계 방향 다음 모서리로 — 실물 감지선이 제어기에 이어진 쪽과 맞춥니다", onclick: () => 시작점돌리기(it)}));
@@ -2214,9 +2677,15 @@ function 옵션그리기() {
       엘("button", {textContent: "⟲ 90°", title: "왼쪽으로 90° (Q)", onclick: () => 고른것돌리기(-90)}),
       엘("button", {textContent: "⟳ 90°", title: "오른쪽으로 90° (E)", onclick: () => 고른것돌리기(90)}),
       엘("span", {class: "칸"}));
+  } else if (도구 === "누수선" && 꺾는중) {
+    const 점 = [...꺾는중.점들, 꺾는중.끝].filter(Boolean);
+    let L = 0; for (let i = 1; i < 점.length; i++) L += Math.hypot(점[i].x - 점[i - 1].x, 점[i].y - 점[i - 1].y);
+    바.append(엘("span", {"data-k": "꺾는중", textContent: `꺾은선 그리는 중 — 점 ${꺾는중.점들.length}개 · ${L.toFixed(2)} m`}), 엘("span", {class: "칸"}),
+      엘("span", {style: "color:var(--e-sub)", textContent: "다음 점을 누르세요 · 더블클릭·Enter 끝 · Backspace 한 점 지우기 · Esc 취소 · Shift 45°"}),
+      엘("button", {textContent: "✓ 끝내기", onclick: () => { 꺾은선끝내기(); 덧그리기(); 상태줄(); }}), 엘("span", {class: "칸"}));
   } else if (도구 === "누수선") {
     바.append(두를길이칸(),
-      엘("span", {style: "color:var(--e-sub)", textContent: "장비를 누르면 둘레에 두르고, 바닥에서 끌면 일자로 긋습니다"}), 엘("span", {class: "칸"}));
+      엘("span", {style: "color:var(--e-sub)", textContent: "장비를 누르면 둘레에 두르고, 바닥에서 끌면 일자로, 바닥을 차례로 누르면 ㄱ·ㄷ·ㄹ 꺾은선 (더블클릭·Enter 끝)"}), 엘("span", {class: "칸"}));
   } else if (도구 === "자" && 자표시) {
     const dx = 자표시.b.x - 자표시.a.x, dy = 자표시.b.y - 자표시.a.y;
     바.append(엘("span", {textContent: `길이 ${Math.hypot(dx, dy).toFixed(3)} m · 가로 ${Math.abs(dx).toFixed(3)} m · 세로 ${Math.abs(dy).toFixed(3)} m · 각도 ${각정리(Math.atan2(dy, dx) * 180 / Math.PI).toFixed(1)}°`}),
@@ -2279,6 +2748,11 @@ function 손잡이들(it) {
     const r = 표시반지름(it) / 평면.배율;
     return [{종류: "회전", xy: 점(0, -r - 22 / 평면.배율), 뿌리: 점(0, -r)}];
   }
+  if (it.종류 === "s_leak_path") {     // 꺾은 점마다 손잡이 (85차)
+    꺾은점(it).forEach(([x, y], i) => 목록.push({종류: "꼭짓점", i, xy: 평면에서화면(x, y)}));
+    목록.push({종류: "회전", xy: 점(0, -it.d / 2 - 26 / 평면.배율), 뿌리: 점(0, -it.d / 2)});
+    return 목록;
+  }
   for (const hx of [-1, 0, 1]) for (const hy of [-1, 0, 1]) {
     if (!hx && !hy) continue;
     목록.push({종류: "크기", hx, hy, xy: 점(hx * it.w / 2, hy * it.d / 2)});
@@ -2300,7 +2774,8 @@ function 항목찾기2D(p) {
     let 최고 = null, 넓이 = 1e9;
     for (const it of 모형.항목) {
       if (분류(it) !== 분 || !만질수있나(it)) continue;
-      if (점센서(it) ? Math.hypot(p.x - it.x, p.y - it.y) > 표시반지름(it) / 평면.배율 : !안쪽(it, p.x, p.y, 분 === "센서" ? 여유 : 0)) continue;
+      if (it.종류 === "s_leak_path" ? 꺾은선거리(it, p) > 여유
+        : 점센서(it) ? Math.hypot(p.x - it.x, p.y - it.y) > 표시반지름(it) / 평면.배율 : !안쪽(it, p.x, p.y, 분 === "센서" ? 여유 : 0)) continue;
       // 둘레 감지선은 띠 근처만 — 안쪽(감싼 장비 자리)을 누르면 장비가 골라지게 (76차)
       if (it.종류 === "s_leak_loop" && it.w > 2 * 여유 && it.d > 2 * 여유 && 안쪽({...it, w: it.w - 2 * 여유, d: it.d - 2 * 여유}, p.x, p.y)) continue;
       const a = it.w * it.d; if (a < 넓이) { 넓이 = a; 최고 = it; }
@@ -2308,6 +2783,15 @@ function 항목찾기2D(p) {
     if (최고) return 최고;
   }
   return null;
+}
+function 꺾은선거리(it, p) {      // 점 p 에서 꺾은선까지 가장 가까운 거리와 그 토막 번호
+  const q = 꺾은점(it); let 최소 = 1e9, 토막 = -1;
+  for (let i = 1; i < q.length; i++) {
+    const [x0, y0] = q[i - 1], [x1, y1] = q[i], dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy;
+    const f = L2 ? Math.max(0, Math.min(1, ((p.x - x0) * dx + (p.y - y0) * dy) / L2)) : 0;
+    const d = Math.hypot(p.x - x0 - dx * f, p.y - y0 - dy * f); if (d < 최소) { 최소 = d; 토막 = i; }
+  }
+  꺾은선거리.토막 = 토막; return 최소;
 }
 function 그리기경로(it) {
   og.beginPath(); 모서리(it).forEach(([x, y], i) => { const [a, b] = 평면에서화면(x, y); i ? og.lineTo(a, b) : og.moveTo(a, b); }); og.closePath();
@@ -2340,6 +2824,13 @@ function 덧그리기() {
       og.fillStyle = 색글(k.색); og.beginPath(); og.arc(a, b, 4, 0, Math.PI * 2); og.fill();
       continue;
     }
+    if (it.종류 === "s_leak_path") {    // 꺾은선 — 점선, 첫 점(0 m)에 동그라미 (85차)
+      const q = 꺾은점(it).map(([x, y]) => 평면에서화면(x, y));
+      og.strokeStyle = 색글(k.색); og.lineWidth = 3; og.setLineDash([8, 4]); og.lineJoin = "round";
+      og.beginPath(); q.forEach(([a, b], i) => i ? og.lineTo(a, b) : og.moveTo(a, b)); og.stroke(); og.setLineDash([]);
+      if (q.length) { og.fillStyle = 색글(k.색); og.beginPath(); og.arc(q[0][0], q[0][1], 4.5, 0, Math.PI * 2); og.fill(); }
+      continue;
+    }
     if (it.종류 === "s_leak_line") {
       og.strokeStyle = 색글(k.색); og.lineWidth = Math.max(3, it.d * 평면.배율); og.setLineDash([8, 4]);
       const m = 모서리(it), [a, b] = 평면에서화면((m[0][0] + m[3][0]) / 2, (m[0][1] + m[3][1]) / 2), [c, d] = 평면에서화면((m[1][0] + m[2][0]) / 2, (m[1][1] + m[2][1]) / 2);
@@ -2369,7 +2860,9 @@ function 덧그리기() {
     }
   }
   // 마우스 아래
-  const 테두리 = (it) => { if (점센서(it)) { const [a, b] = 평면에서화면(it.x, it.y); og.beginPath(); og.arc(a, b, 표시반지름(it) + 3, 0, Math.PI * 2); } else 그리기경로(it); };
+  const 테두리 = (it) => { if (점센서(it)) { const [a, b] = 평면에서화면(it.x, it.y); og.beginPath(); og.arc(a, b, 표시반지름(it) + 3, 0, Math.PI * 2); }
+    else if (it.종류 === "s_leak_path") { og.beginPath(); 꺾은점(it).forEach(([x, y], i) => { const [a, b] = 평면에서화면(x, y); i ? og.lineTo(a, b) : og.moveTo(a, b); }); }   // 꺾은선은 선을 따라 (85차)
+    else 그리기경로(it); };
   if (위에 && !고른.has(위에)) { const it = 찾기id.get(위에); if (it) { 테두리(it); og.strokeStyle = "rgba(245,158,11,.95)"; og.lineWidth = 2; og.stroke(); } }
   // 고른 것
   for (const id of 고른) {
@@ -2417,7 +2910,17 @@ function 덧그리기() {
     og.fillStyle = "#93c5fd"; og.font = "bold 12px 'Malgun Gothic', sans-serif";
     og.fillText(Math.hypot(끌기.끝.x - 끌기.시작.x, 끌기.끝.y - 끌기.시작.y).toFixed(2) + " m", (a + c) / 2, (b + d) / 2 - 14);
   }
-  if (누수대상 && !끌기 && !두른선(누수대상)) {
+  if (꺾는중) {                       // 꺾은선 그리는 중 — 찍은 점과 마우스까지 (85차)
+    const 점 = [...꺾는중.점들, 꺾는중.끝].filter(Boolean).map(q => 평면에서화면(q.x, q.y));
+    og.strokeStyle = "#3b82f6"; og.lineWidth = 3; og.setLineDash([8, 4]); og.lineJoin = "round";
+    og.beginPath(); 점.forEach(([a, b], i) => i ? og.lineTo(a, b) : og.moveTo(a, b)); og.stroke(); og.setLineDash([]);
+    og.fillStyle = "#93c5fd"; for (const [a, b] of 점.slice(0, 꺾는중.점들.length)) { og.beginPath(); og.arc(a, b, 4, 0, Math.PI * 2); og.fill(); }
+    if (꺾는중.끝 && 점.length > 1) {
+      const 앞 = 꺾는중.점들.at(-1), 끝 = 꺾는중.끝, [a, b] = 점.at(-2), [c, d] = 점.at(-1);
+      og.font = "bold 12px 'Malgun Gothic', sans-serif"; og.fillText(Math.hypot(끝.x - 앞.x, 끝.y - 앞.y).toFixed(2) + " m", (a + c) / 2, (b + d) / 2 - 14);
+    }
+  }
+  if (누수대상 && !끌기 && !두른선(누수대상) && !꺾는중) {
     const 임시 = {id: "~", x: 0, y: 0, w: 0, d: 0}; 둘레맞추기(임시, 누수대상, 누수선길이);
     og.strokeStyle = "#3b82f6"; og.lineWidth = 2.5; og.setLineDash([6, 4]); 그리기경로(임시); og.stroke(); og.setLineDash([]);
     const [a, b] = 평면에서화면(누수대상.x, 누수대상.y);
@@ -2437,8 +2940,9 @@ function 덧그리기() {
 /* 위·왼쪽 눈금자 (포토샵 눈금자처럼 m 단위) */
 function 자눈금() {
   const 두께 = 18;
-  og.fillStyle = "#2b2f35"; og.fillRect(0, 0, W, 두께); og.fillRect(0, 0, 두께, H);
-  og.strokeStyle = "#7d8691"; og.fillStyle = "#c4cad1"; og.lineWidth = 1; og.font = "10px sans-serif";
+  const 밝음 = document.documentElement.getAttribute("data-theme") === "light";      // 눈금자도 테마를 따른다 (81차)
+  og.fillStyle = 밝음 ? "#e6ebf1" : "#2b2f35"; og.fillRect(0, 0, W, 두께); og.fillRect(0, 0, 두께, H);
+  og.strokeStyle = 밝음 ? "#8a96a3" : "#7d8691"; og.fillStyle = 밝음 ? "#4a5a6b" : "#c4cad1"; og.lineWidth = 1; og.font = "10px sans-serif";
   const 걸음 = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20].find(s => s * 평면.배율 >= 40) || 50;
   const 작은 = 걸음 / 5;
   og.beginPath();
@@ -2459,7 +2963,7 @@ function 자눈금() {
     const [a, b] = 평면에서화면(커서평면.x, 커서평면.y);
     og.strokeStyle = "#ffd166"; og.beginPath(); og.moveTo(a + .5, 0); og.lineTo(a + .5, 두께); og.moveTo(0, b + .5); og.lineTo(두께, b + .5); og.stroke();
   }
-  og.fillStyle = "#2b2f35"; og.fillRect(0, 0, 두께, 두께);
+  og.fillStyle = 밝음 ? "#e6ebf1" : "#2b2f35"; og.fillRect(0, 0, 두께, 두께);
 }
 function 커서(손잡이) {
   if (!편집중) { cv.style.cursor = ""; return; }
@@ -2537,6 +3041,41 @@ function 회전시작(p, 목록, 중심) {
   끌기 = {종류: "회전", 중심, 시작각: Math.atan2(p.y - 중심.y, p.x - 중심.x), 도: 0,
     원본: new Map(목록.map(it => [it.id, {x: it.x, y: it.y, 회전: it.회전 || 0}]))};
 }
+/* 꺾은선 감지선 그리기 (85차) — ≋ 도구로 바닥을 차례로 누른다. 같은 자리를 다시 누르거나(더블클릭) Enter 로 끝 */
+let 꺾는중 = null;          // {점들: [{x, y}], 끝: 마우스 자리}
+function 꺾은끝(p, e) {
+  let b = {x: p.x, y: p.y};
+  if (!e.ctrlKey && 격자 > 0) b = {x: 격자맞춤(b.x), y: 격자맞춤(b.y)};
+  const a = 꺾는중 && 꺾는중.점들.at(-1);
+  if (a && e.shiftKey) {
+    const 각 = Math.round(Math.atan2(b.y - a.y, b.x - a.x) / (Math.PI / 4)) * Math.PI / 4, 길이 = Math.hypot(b.x - a.x, b.y - a.y);
+    b = {x: 둘째(a.x + Math.cos(각) * 길이), y: 둘째(a.y + Math.sin(각) * 길이)};
+  }
+  return b;
+}
+function 꺾은선끝내기() {
+  const 점 = 꺾는중 ? 꺾는중.점들 : []; 꺾는중 = null;
+  if (점.length < 2) { 상태("점이 두 개 이상이어야 감지선이 됩니다"); 옵션그리기(); return null; }
+  층.센서.보임 = true; 층.센서.잠금 = false;
+  const it = 새항목("s_leak_path", 점[0].x, 점[0].y, {점들: 점.map(q => [둘째(q.x - 점[0].x), 둘째(q.y - 점[0].y)])});
+  꺾은맞춤(it); 장면맞추기(); 고르기([it.id]); 기록("누수 감지선 긋기 (꺾은선)");
+  상태(`${it.id} 꺾은선 감지선 ${꺾은길이(it).toFixed(2)} m · 꺾은 점 ${점.length}개 — 속성에서 FMS 센서 코드를 적으세요 (0 m 는 첫 점)`);
+  옵션그리기(); return it;
+}
+function 꼭짓점중(p, e) {
+  const k = 끌기, it = k.it, i = k.i;
+  let q = {x: p.x, y: p.y};
+  if (!e.ctrlKey && 격자 > 0) q = {x: 격자맞춤(q.x), y: 격자맞춤(q.y)};
+  const 세계 = 꺾은점(it), 이웃 = 세계[i - 1] || 세계[i + 1];
+  if (e.shiftKey && 이웃) {
+    const 각 = Math.round(Math.atan2(q.y - 이웃[1], q.x - 이웃[0]) / (Math.PI / 4)) * Math.PI / 4, 길이 = Math.hypot(q.x - 이웃[0], q.y - 이웃[1]);
+    q = {x: 이웃[0] + Math.cos(각) * 길이, y: 이웃[1] + Math.sin(각) * 길이};
+  }
+  const c = Math.cos(라(it.회전 || 0)), n = Math.sin(라(it.회전 || 0)), dx = q.x - it.x, dy = q.y - it.y;
+  it.점들[i] = [둘째(dx * c + dy * n), 둘째(-dx * n + dy * c)];
+  k.움직임 = true; 매시맞추기(it); 센서표맞추기(); 더러움 = true;
+  상태(`${it.id} 감지선 ${꺾은길이(it).toFixed(2)} m`);
+}
 function 벽끝(p, e) {
   let b = {x: p.x, y: p.y};
   if (!e.ctrlKey && 격자 > 0) b = {x: 격자맞춤(b.x), y: 격자맞춤(b.y)};
@@ -2573,6 +3112,13 @@ stage.addEventListener("pointerdown", e => {
   if (도구 === "벽") { 끌기 = {종류: "벽", 시작: 격자 > 0 && !e.ctrlKey ? {x: 격자맞춤(p.x), y: 격자맞춤(p.y)} : p, 끝: null}; return; }
   if (도구 === "자") { 끌기 = {종류: "자"}; 자표시 = {a: p, b: p}; 옵션그리기(); return; }
   if (도구 === "누수선") {
+    if (꺾는중) {                                            // 꺾은선 그리는 중 — 누르는 곳마다 점, 같은 자리를 다시 누르면 끝
+      const q = 꺾은끝(p, e), 앞 = 꺾는중.점들.at(-1);
+      if (Math.hypot(q.x - 앞.x, q.y - 앞.y) < .05) 꺾은선끝내기(); else { 꺾는중.점들.push(q); 꺾는중.끝 = q; 옵션그리기(); }
+      덧그리기(); return;
+    }
+    const 손점 = 손잡이찾기(sx, sy);
+    if (손점 && 손점.종류 === "꼭짓점") { 끌기 = {종류: "꼭짓점", it: 손점.it, i: 손점.i}; return; }
     const 위것 = 항목찾기2D(p);
     if (위것 && 감지선(위것)) { 고르기([위것.id]); 이동시작(p, 위것); return; }      // 감지선 띠를 누르면 끌어 옮긴다
     const 장 = 장비찾기(p), 있는 = 장 && 두른선(장);
@@ -2583,6 +3129,14 @@ stage.addEventListener("pointerdown", e => {
   const 손 = 손잡이찾기(sx, sy);
   if (손 && 도구 !== "사각") {
     if (손.종류 === "회전") 회전시작(p, [손.it], {x: 손.it.x, y: 손.it.y});
+    else if (손.종류 === "꼭짓점") {
+      if (e.altKey) {                                         // Alt+누르기 = 그 점 빼기 (85차)
+        if (손.it.점들.length > 2) { 손.it.점들.splice(손.i, 1); 꺾은맞춤(손.it); 바꾼것맞추기([손.it]); 기록("감지선 꺾은 점 빼기"); 옵션그리기(); }
+        else 상태("점이 두 개뿐이라 뺄 수 없습니다");
+        덧그리기(); return;
+      }
+      끌기 = {종류: "꼭짓점", it: 손.it, i: 손.i};
+    }
     else 끌기 = {종류: "크기", it: 손.it, hx: 손.hx, hy: 손.hy, 원: {...손.it}};
     return;
   }
@@ -2617,11 +3171,13 @@ cv.addEventListener("pointermove", e => {
     if (끌기.종류 === "손") { 평면.cx = 끌기.cx - (sx - 끌기.sx) / 평면.배율; 평면.cy = 끌기.cy - (sy - 끌기.sy) / 평면.배율; 평면맞추기(); }
     else if (끌기.종류 === "이동") 이동중(p, e);
     else if (끌기.종류 === "크기") 크기중(p, e);
+    else if (끌기.종류 === "꼭짓점") 꼭짓점중(p, e);
     else if (끌기.종류 === "회전") 회전중(p, e);
     else if (끌기.종류 === "사각") 끌기.끝 = p;
     else if (끌기.종류 === "벽" || 끌기.종류 === "누수선") 끌기.끝 = 벽끝(p, e);
     else if (끌기.종류 === "자") { 자표시.b = p; 옵션그리기(); }
   } else {
+    if (꺾는중) { 꺾는중.끝 = 꺾은끝(p, e); 덧그리기(); 상태줄(); 옵션그리기(); return; }
     누수대상 = 도구 === "누수선" || (놓을종류 && 놓을종류.startsWith("s_leak_l")) ? 장비찾기(p) : null;
     const 손 = 손잡이찾기(sx, sy);
     const it = 손 ? null : 항목찾기2D(p), id = it ? it.id : null;
@@ -2641,6 +3197,7 @@ addEventListener("pointerup", e => {
     else if (k.움직임 || k.복제) { 덧붙이맞추기(); 기록(k.복제 ? "복제해서 옮기기" : "옮기기"); } else if (k.복제) 기록("복제");
   }
   else if (k.종류 === "크기") { 덧붙이맞추기(); 기록("크기 바꾸기"); }
+  else if (k.종류 === "꼭짓점") { if (k.움직임) { 꺾은맞춤(k.it); 바꾼것맞추기([k.it]); 기록("감지선 꺾은 점 옮기기"); } }
   else if (k.종류 === "회전") { if (k.도) { 덧붙이맞추기(); 기록(`${k.도}° 돌리기`); } }
   else if (k.종류 === "사각") {
     const x0 = Math.min(k.시작.x, k.끝.x), x1 = Math.max(k.시작.x, k.끝.x), y0 = Math.min(k.시작.y, k.끝.y), y1 = Math.max(k.시작.y, k.끝.y);
@@ -2648,6 +3205,9 @@ addEventListener("pointerup", e => {
       const ids = 모형.항목.filter(it => { if (!만질수있나(it)) return false; const b = 범위(it); return b.x0 >= x0 && b.x1 <= x1 && b.y0 >= y0 && b.y1 <= y1; }).map(it => it.id);
       고르기(ids, k.더하기);
     }
+  } else if (k.종류 === "누수선" && (!k.끝 || Math.hypot(k.끝.x - k.시작.x, k.끝.y - k.시작.y) < .1)) {
+    꺾는중 = {점들: [k.시작], 끝: k.시작}; 고르기([]);   // 끌지 않고 눌렀다 떼면 꺾은선 그리기 시작 (85차)
+    상태("꺾은선 — 다음 점을 차례로 누르세요 · 더블클릭·Enter 끝 · Backspace 한 점 지우기 · Esc 취소");
   } else if (k.종류 === "누수선" && k.끝) {
     const a = k.시작, b = k.끝, 길이 = Math.hypot(b.x - a.x, b.y - a.y);
     if (길이 >= .1) {
@@ -2674,6 +3234,18 @@ cv.addEventListener("wheel", e => {
 }, {passive: false});
 cv.addEventListener("dblclick", e => {
   if (!편집중) return;
+  if (꺾는중) { 꺾은선끝내기(); 덧그리기(); return; }
+  if (편집보기 === "2D" && 고른.size === 1) {               // 고른 꺾은선의 선 위를 두 번 누르면 거기에 점을 더한다 (85차)
+    const it = 찾기id.get([...고른][0]), p = 편집점(e);
+    if (it && it.종류 === "s_leak_path" && 만질수있나(it) && 꺾은선거리(it, p) <= 12 / 평면.배율) {
+      const i = 꺾은선거리.토막, [a, b] = it.점들[i - 1], [c2, d2] = it.점들[i];      // 누른 자리를 그 토막 위로 (점 사이 직선 그대로)
+      const c = Math.cos(라(it.회전 || 0)), n = Math.sin(라(it.회전 || 0)), dx = p.x - it.x, dy = p.y - it.y;
+      const lx = dx * c + dy * n, ly = -dx * n + dy * c, L2 = (c2 - a) ** 2 + (d2 - b) ** 2;
+      const f = L2 ? Math.max(0, Math.min(1, ((lx - a) * (c2 - a) + (ly - b) * (d2 - b)) / L2)) : 0;
+      it.점들.splice(i, 0, [둘째(a + (c2 - a) * f), 둘째(b + (d2 - b) * f)]);
+      꺾은맞춤(it); 바꾼것맞추기([it]); 기록("감지선 꺾은 점 더하기"); 옵션그리기(); 덧그리기(); return;
+    }
+  }
   const it = 편집보기 === "2D" ? 항목찾기2D(편집점(e)) : 집기3D(화면좌표(e), true);
   if (it && 편집보기 === "3D") 가까이([it.id]);
 });
@@ -2694,6 +3266,13 @@ addEventListener("keydown", e => {
       return;
     }
     if (k === " " && !스페이스) { 스페이스 = true; 커서(); e.preventDefault(); return; }
+    if (꺾는중 && (k === "enter" || k === "backspace" || k === "delete" || k === "escape")) {    // 꺾은선 그리는 중 (85차)
+      e.preventDefault();
+      if (k === "enter") 꺾은선끝내기();
+      else if (k === "escape") { 꺾는중 = null; 상태("꺾은선 그리기를 그만두었습니다"); }
+      else { 꺾는중.점들.pop(); if (!꺾는중.점들.length) 꺾는중 = null; }
+      옵션그리기(); 덧그리기(); 상태줄(); return;
+    }
     const 걸음 = e.shiftKey ? 0.1 : 0.01;
     const 동 = {
       arrowleft: () => 조금옮기기(-걸음, 0), arrowright: () => 조금옮기기(걸음, 0),
@@ -2792,10 +3371,19 @@ if (FMS켬) { $("source").textContent = "FMS 에 연결하는 중…"; 토큰받
 /* 시험용 손잡이 */
 window.__room3d = {덮어쓰기: (o) => { 라이브.덮어쓰기 = o || {}; },
   표보임: () => [...라이브.표].filter(([, s]) => s.visible).map(([id]) => id), 표수: () => 라이브.표.size,
+  표글: (id) => { const s = 라이브.표.get(id); return s ? s.userData.줄 : null; },
+  재질정보: (id) => { const m = 매시들.get(id), it = 찾기id.get(id); if (!m || !it) return null;
+    const 판 = Array.isArray(m.material) ? m.material : null;
+    return {세부: !!판, 앞x: 판 ? !!판[0].map && 판[0] === 판[1] && 판[0] !== 판[4] && 판[0].map === 세부재질(it.종류, true)[0].map : null,
+      온도칠: [...온도재질칸.values()].includes(m.material)}; },
+  타공수: () => 타공판 ? 타공판.count : 0,
+  선위치: (id, m) => 선위치(찾기id.get(id), m), 꺾는중: () => 꺾는중 && 꺾는중.점들.length,
+  그린크기: (id) => { const m = 매시들.get(id); return m ? [+m.scale.x.toFixed(3), +m.scale.z.toFixed(3), +m.scale.y.toFixed(3)] : null; },
   표칩: () => [...라이브.표].filter(([, s]) => s.visible && s.userData.작은 && s.material.map === s.userData.작은.tex).map(([id]) => id),
   FMS: () => ({켬: FMS켬, 시작됨: FMS.시작됨, 현장: FMS.현장 && FMS.현장.code, 출처: FMS.출처, 점: FMS.점들.length, 밖알람: FMS.밖알람,
     값: Object.fromEntries([...라이브.값].map(([k, v]) => [k, {단계: v.단계, 글: 값글(k)}]))}), FMS로가기, 현장열기,
-  라이브: () => ({켬: 라이브.켬, 센서: 라이브.센서.length, 알람: 라이브.알람.map(a => [a.id, a.v.단계]), 랙색: [...라이브.랙상태]}), 라이브켜기, 알람으로,
+  라이브: () => ({켬: 라이브.켬, 센서: 라이브.센서.length, 알람: 라이브.알람.map(a => [a.id, a.v.단계]), 랙색: [...라이브.랙상태], 랙온도: [...라이브.랙온도],
+    재생: 재생.켬 ? {i: 재생.i, 수: 재생.시각들.length, 시각: 재생.시각들[재생.i]} : null}), 라이브켜기, 알람으로, 재생열기, 재생보기, 재생닫기,
   camera, controls, 고른: () => [...고른], 모형: () => 모형, 시점들, 날기, 나는중: () => !!비행, 모드, 편집보기바꾸기, 평면,
   평면에서화면, 내역: () => 내역.목록.map(h => h.이름), 저장됨: () => 저장됨,
   표화면: (id) => { const s = 센서표.get(id); const p = s.position.clone().project(지금카메라());

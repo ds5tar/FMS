@@ -95,6 +95,20 @@ try:
         확인(값["TH01"]["단계"] == "주의", f"3층 실내 온도 상승(주의) → 온습도 주의 — {값['TH01']}")
         확인("℃" in 값["R01-03"]["글"][0], f"랙에 붙은 흡입온도 — {값['R01-03']}")
         확인(st["밖알람"] >= 1, f"배치 안 된 센서의 알람도 센다 — {st['밖알람']}건")
+        # 87차 — 알람 말풍선 개수(Siemens 방식): 센서가 여럿 붙은 항온항습기 표에 「⚠ 위험 1 / 센서 4」
+        표 = fr.evaluate("window.__room3d.표글('AC05')") or []
+        확인(any(x.startswith("⚠ 위험") and "센서" in x for x in 표), f"AC05 표에 알람 개수 줄 — {표}")
+        # 87차 — ⏱ 지난 기록 돌려보기: 온도 점의 1시간 평균을 받아 시각을 돌린다
+        fr.evaluate("window.__room3d.재생열기(168)")
+        기다리기(fr, "(r => r && window.document.getElementById('replayNote').textContent.includes('온도 센서'))(window.__room3d.라이브().재생)", 30000)
+        재 = fr.evaluate("window.__room3d.라이브().재생"); 노트 = fr.inner_text("#replayNote")
+        확인(재["수"] == 168 and "못 받음" not in 노트 and "기록 재생" in fr.inner_text("#alarms"), f"FMS 기록 재생 7일 — {노트}")
+        기록있는 = fr.evaluate("""() => { const r = window.__room3d; for (let i = 0; i < 168; i++) { r.재생보기(i);
+            const v = Object.values(r.FMS().값).filter(x => x.글 && /℃$/.test(x.글[0] || '') ); if (v.length) return [i, v.length]; } return null; }""")
+        확인(기록있는 is not None, f"기록 시각에는 온도 센서가 그 시각 값 — {기록있는}")
+        pg.screenshot(path=f"{OUT}/02b_서울_기록재생.png")
+        fr.locator("#replay button", has_text="실시간으로").click(); fr.wait_for_timeout(600)
+        확인(fr.evaluate("window.__room3d.라이브().재생") is None and "FMS 실시간" in fr.inner_text("#alarms"), "실시간으로 돌아옴")
         알람글 = fr.inner_text("#alarms")
         확인("FMS 실시간" in 알람글 and "데모" not in 알람글, "알람 창 머리 — FMS 실시간")
         pg.wait_for_timeout(800)
