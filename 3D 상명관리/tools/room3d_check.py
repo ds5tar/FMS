@@ -1,5 +1,5 @@
 # 3D 상면 화면(static/room3d.html)을 크로미엄으로 열어 보기·게이지·실시간 미리보기·편집기·저장을 시험한다 — 쓰는 법: python3 room3d_check.py <static 폴더> <그림 폴더> (playwright 필요)
-import sys, subprocess, time, json, os
+import sys, subprocess, time, json, os, math
 from playwright.sync_api import sync_playwright
 
 ST = sys.argv[1]
@@ -17,7 +17,7 @@ try:
     with sync_playwright() as p:
         b = p.chromium.launch(args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"])
         ctx = b.new_context(viewport={"width": 1600, "height": 900}, accept_downloads=True)
-        pg = ctx.new_page()
+        pg = ctx.new_page(); pg.set_default_timeout(90000)      # 소프트웨어 그리기는 초당 1장 남짓 — 화면 찍기가 30초를 넘기도 한다
         오류 = []
         pg.on("console", lambda m: m.type in ("error", "warning") and 오류.append(m.text))
         pg.on("pageerror", lambda e: 오류.append(str(e)))
@@ -96,6 +96,26 @@ try:
         확인(all(d in 단계들 for d in ("위험", "경고", "주의", "정지")), f"알람 단계 {단계들}")
         확인(any(a[0].startswith("LL-") for a in 라["알람"]) and any(a[0].startswith("AC") for a in 라["알람"]), "누수·항온항습기 알람 포함")
         확인(len(라["랙색"]) >= 3, f"랙 색 — 온도 이상 랙 {len(라['랙색'])}대")
+        # 89차 — 장애 색을 칠해도 세부 그림(서버 칸·LED)이 남는다 (단색 재질로 바꾸지 않고 그림 재질에 색을 입힘)
+        이상랙 = 라["랙색"][0][0]; 정 = pg.evaluate(f"window.__room3d.재질정보('{이상랙}')")
+        확인(정 and 정["세부"] and 정["칠함"] and 정["그림"], f"이상 랙 {이상랙} — 세부 그림 그대로 색 입힘 ({정})")
+        이상공조 = [a for a, 단 in 라["알람"] if a.startswith("AC") and 단 in ("위험", "경고")]
+        if 이상공조:
+            정 = pg.evaluate(f"window.__room3d.재질정보('{이상공조[0]}')")
+            확인(정 and 정["세부"] and 정["칠함"], f"이상 항온항습기 {이상공조[0]} — 문·그릴·표시창 그대로 색 입힘")
+        # 89차 — 설비가 화면을 크게 차지하면 이름표
+        pg.evaluate("window.__room3d.시점들.iso()"); pg.wait_for_timeout(1500)
+        확인(pg.evaluate("window.__room3d.이름표들()") == [], "멀리서 전체 보기 — 설비 이름표 없음")
+        ac = pg.evaluate("window.__room3d.모형().항목.find(i => i.종류 === 'rack' && i.id === 'R150') || window.__room3d.모형().항목.filter(i => i.종류 === 'rack')[150]")
+        pg.evaluate(f"window.__room3d.날기(new (window.__room3d.camera.position.constructor)({ac['x']}, 1.2, {ac['y']}), 3.2, new (window.__room3d.camera.position.constructor)(0.2, 0.35, 1).normalize())")
+        for _ in range(40):      # 소프트웨어 그리기는 1초에 몇 장뿐 — 이름표가 붙을 때까지 기다림
+            pg.wait_for_timeout(250); 붙은 = pg.evaluate("window.__room3d.이름표들()")
+            if 붙은 and not pg.evaluate("window.__room3d.나는중()"): break
+        확인(ac["id"] in 붙은 and len(붙은) <= 8, f"{ac['id']} 가까이 — 설비 이름표 {붙은}")
+        칸 = pg.evaluate("window.__room3d.이름표칸()")
+        겹 = [(a, b) for i, a in enumerate(칸) for b in 칸[i + 1:] if a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]]
+        확인(len(칸) == len(붙은) and not 겹, f"이름표끼리 겹치지 않음 ({len(칸)}개)")
+        pg.screenshot(path=f"{OUT}/03f_설비이름표.png")
         # ── 87차 — 설비 세부 그림 · 타공판 · 랙 흡기 온도 색 · 지난 기록 돌려보기(데모) ──
         정 = pg.evaluate("window.__room3d.재질정보('R001')")
         r1 = pg.evaluate("window.__room3d.모형().항목.find(i => i.id === 'R001')")
@@ -120,6 +140,43 @@ try:
         pg.locator("#replay button", has_text="실시간으로").click(); pg.wait_for_timeout(300)
         확인(not pg.is_visible("#replay") and pg.evaluate("window.__room3d.라이브().재생") is None and pg.evaluate("window.__room3d.라이브().켬"), "✕ 실시간으로 — 재생 닫고 실시간 그대로")
         pg.select_option("#t_rackmode", "알람"); pg.wait_for_timeout(300)
+        # ── 88차 — 🥽 VR 현장보기: 하늘에서 눈높이로 내려오기 · 걷기(벽·랙 못 지남) · 알람 앞으로 · 녹화(MP4, 못 쓰면 WebM) ──
+        pg.click("#walkBtn"); pg.wait_for_timeout(250)
+        w0 = pg.evaluate("window.__room3d.걷기()")
+        확인(w0["켬"] and w0["높이"] > 8 and pg.is_visible("#walkHud") and not pg.is_visible("#ui"), f"VR 현장보기 — 하늘에서 시작 (높이 {w0['높이']:.1f} m)")
+        pg.wait_for_function("!window.__room3d.걷기().이동중", timeout=120000, polling=500)      # 느린 소프트웨어 그리기 — 넉넉히
+        w1 = pg.evaluate("window.__room3d.걷기()")
+        확인(abs(w1["높이"] - 1.6) < .01 and not w1["이동중"] and not w1["막힘"], f"눈높이 1.6 m 로 내려와 빈 통로에 섬 ({w1['x']:.1f}, {w1['y']:.1f}, 높이 {w1['높이']:.2f}, 이동중 {w1['이동중']}, 막힘 {w1['막힘']})")
+        확인(pg.evaluate("document.getElementById('t_wallhi').checked"), "벽을 전체 높이로")
+        pg.screenshot(path=f"{OUT}/03d_VR_눈높이.png")
+        def 걸어보기(키):      # 느린 소프트웨어 그리기(초당 1장 이하) — 0.3 m 넘게 갈 때까지 최대 40초 누름
+            pg.keyboard.down(키)
+            try: pg.wait_for_function(f"(() => {{ const w = window.__room3d.걷기(); return Math.hypot(w.x - {w1['x']}, w.y - {w1['y']}) > .3; }})()", timeout=40000, polling=250)
+            except Exception: pass
+            pg.keyboard.up(키); return pg.evaluate("window.__room3d.걷기()")
+        w2 = 걸어보기("w")
+        if math.hypot(w2["x"] - w1["x"], w2["y"] - w1["y"]) < .3: w2 = 걸어보기("s")      # 바로 앞이 랙이면 뒤로
+        확인(math.hypot(w2["x"] - w1["x"], w2["y"] - w1["y"]) > .1 and not w2["막힘"] and abs(w2["높이"] - 1.6) < .01, f"W 로 걸음 — {math.hypot(w2['x'] - w1['x'], w2['y'] - w1['y']):.2f} m, 벽·랙 속 아님")
+        pg.keyboard.down("a"); pg.keyboard.down("Shift"); pg.wait_for_timeout(4000); pg.keyboard.up("Shift"); pg.keyboard.up("a")
+        확인(not pg.evaluate("window.__room3d.걷기().막힘"), "옆으로 오래 걸어도 랙·벽을 못 뚫음")
+        pg.keyboard.press("n"); pg.wait_for_timeout(1500)
+        w3 = pg.evaluate("window.__room3d.걷기()")
+        확인(not w3["막힘"] and "→" in pg.inner_text("#walkSee"), f"N — 다음 알람 앞으로 ({pg.inner_text('#walkSee')[:40]})")
+        pg.screenshot(path=f"{OUT}/03e_VR_알람앞.png")
+        확인(w3["형식"] is not None, f"녹화 형식 — {w3['형식']}")
+        pg.click("#walkRecBtn"); pg.keyboard.down("ArrowLeft"); pg.wait_for_timeout(2000); pg.keyboard.up("ArrowLeft")
+        확인(pg.evaluate("window.__room3d.걷기().녹화") and pg.is_visible("#walkRec"), "⏺ 녹화 중 표시")
+        다운 = []
+        pg.once("download", lambda d: 다운.append(d))
+        pg.click("#walkRecBtn"); pg.wait_for_timeout(1500)
+        기 = pg.evaluate("window.__room3d.걷기().마지막영상")
+        if 다운:      # 진짜 GPU — 파일이 나온다
+            이름 = 다운[0].suggested_filename; 크기 = os.path.getsize(다운[0].path())
+            확인(이름.startswith("현장보기_") and 이름.endswith(".mp4" if "mp4" in w3["형식"] else ".webm") and 크기 > 2048, f"⏹ 저장 — {이름} {크기 / 1024:.1f} KB ({w3['형식']})")
+        else:         # 시험기(소프트웨어 그리기)는 한 장이 1초 넘게 걸려 거의 비어 있다 — 빈 파일 대신 알림
+            확인(기 and 기["이름"] is None and "녹화된 장면이 거의 없습니다" in pg.inner_text("#info"), f"⏹ 녹화가 거의 비면 파일 대신 알림 ({기})")
+        pg.click("#walkExit"); pg.wait_for_timeout(300)
+        확인(not pg.evaluate("window.__room3d.걷기().켬") and pg.is_visible("#ui") and not pg.evaluate("document.getElementById('t_wallhi').checked"), "✕ 나가기 — 전 시점·벽 높이로")
         확인(pg.locator("#alarms .알람").count() >= 5, "알람 창 목록")
         pg.evaluate("document.querySelector('#alarms .알람').click()"); 다옴()      # 목록이 2초마다 새로 그려져 느린 시험기에서는 「안정」 을 못 기다린다
         확인("흡기 온도" in pg.inner_text("#info") or "상태" in pg.inner_text("#info"), "알람을 누르면 그 장비로 가서 실시간 값")
