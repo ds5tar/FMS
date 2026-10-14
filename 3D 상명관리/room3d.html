@@ -410,7 +410,8 @@ try {
 }
 /* FMS 연결 — 관제 화면(index.html)의 「3D 상면」 메뉴가 이 화면을 iframe 으로 띄운다 (71차). 그때는 현장 배치를 서버에서 읽고 쓰며
    실시간 값을 FMS 에서 받는다. 토큰은 주소가 아니라 postMessage 로 받아 변수에만 둔다 (아래 「FMS 연결」) */
-const FMS켬 = new URLSearchParams(location.search).get("fms") === "1" && window.parent !== window;
+/* demo.html(파일 하나 데모)은 이 문서를 srcdoc 으로 싣고 FMS데모 = true 를 먼저 둔다 — 주소에 ?fms=1 을 못 붙여서 (90차) */
+const FMS켬 = (new URLSearchParams(location.search).get("fms") === "1" || window.FMS데모 === true) && window.parent !== window;
 const 처음이름 = FMS켬 ? null : 지금이름읽기(), 저장본 = 처음이름 ? 보관읽기()[처음이름] : null;
 let 모형 = 깊은복사(저장본 && 저장본.판 === 2 ? 저장본 : 원본);
 /* 지금 문서 — 이름(파일 이름에서 .json 을 뺀 것)과, 다른 이름으로 저장·파일 열기로 얻은 PC 파일 손잡이 */
@@ -1524,7 +1525,9 @@ function 라이브깜빡(now) {
 const FMS = {토큰: null, 권한: {}, 사용자: "", 기다림: [], 시작됨: false, 현장: null, 현장들: [], 출처: "", 저장정보: null,
   점들: [], 태그: new Map(), 번호: new Map(), 상태: new Map(), 정체: 300, 주기: 5000, 받은시각: 0, 머리말: "FMS 실시간", 밖알람: 0};
 const FMS현장열쇠 = "fms.room3d.site";      // 마지막으로 본 현장 번호 (토큰이 아니다)
-function FMS부르기(종류) { parent.postMessage({fms3d: 종류}, location.origin); }
+/* 파일로 연 데모(file://)는 출처가 「null」 이라 그 이름으로는 못 보낸다 — 그때만 「*」 (받는 쪽은 출처·보낸 창을 그대로 본다, 90차) */
+const FMS보낼곳 = location.origin === "null" ? "*" : location.origin;
+function FMS부르기(종류) { parent.postMessage({fms3d: 종류}, FMS보낼곳); }
 function 토큰받기() {
   return new Promise((됨, 안됨) => {
     FMS.기다림.push(됨); FMS부르기(FMS.토큰 ? "token" : "ready");
@@ -1710,7 +1713,7 @@ async function 현장열기(sid) {
   const 차례 = FMS.열기차례 = (FMS.열기차례 || 0) + 1, 지났나 = () => 차례 !== FMS.열기차례;
   FMS.현장 = s; FMS.출처 = ""; FMS출처표시();
   try { localStorage.setItem(FMS현장열쇠, String(s.id)); } catch { /* 저장소를 못 쓰는 창 */ }
-  parent.postMessage({fms3d: "site", site_id: s.id}, location.origin);
+  parent.postMessage({fms3d: "site", site_id: s.id}, FMS보낼곳);
   let b;
   try { b = await fms(`/api/sites/${s.id}/room-layout`); } catch (e) { if (!지났나()) 알림(`${s.name} 배치를 읽지 못했습니다`, e.message); return; }
   if (지났나()) return;
