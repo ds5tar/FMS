@@ -90,6 +90,19 @@ with sync_playwright() as p:
              f"알람의 「3D」 — 서울로 돌아와 {짝[1]} 고름 ({fr.evaluate('window.__room3d.고른()')})")
         pg.wait_for_timeout(1500); pg.screenshot(path=f"{OUT}/d3_데모_3D로가기.png")
 
+    # 97차 — 3D 배치에 붙지 않은 센서로 가라고 하면 팝업창으로 알린다 (전에는 왼쪽 아래 정보 칸에 글만 바뀌었다)
+    없는 = next((pid for pid, tag in 표 if not any(tag == c or tag.startswith(c + ".") for _, c in 코드들)), None)
+    확인(없는 is not None, f"서울 배치에 안 붙은 센서 찾기 ({없는})")
+    if 없는:
+        pg.evaluate(f"openRoom3d(1, {없는})")
+        뜸 = 기다리기(fr, "!!document.querySelector('.대화막') && document.querySelector('.대화막').textContent.includes('3D 배치에 없습니다')", 30000)
+        글 = fr.evaluate("(document.querySelector('.대화막') || {}).textContent || ''")
+        확인(뜸 and "배치 편집" in 글, f"배치에 없는 센서 → 팝업창 ({글[:60]})")
+        pg.screenshot(path=f"{OUT}/d3b_배치에없는센서.png")
+        if 뜸:
+            fr.evaluate("[...document.querySelectorAll('.대화막 button')].find(b => b.textContent === '닫기').click()")
+            확인(fr.evaluate("!document.querySelector('.대화막')"), "팝업창 「닫기」")
+
     # 93차 — 장애 내역 팝업의 센서 칸을 누르면 3D 상면의 그 센서로 (「CRAC-05 펌프1」 = 서울 배치 CRAC-05)
     fr.select_option("#layoutSel", 부산[0]); 기다리기(fr, "window.__room3d.FMS().현장 === 'BUSAN'")
     pg.evaluate("setMode('dash')"); pg.wait_for_timeout(500)
