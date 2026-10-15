@@ -121,6 +121,22 @@ with sync_playwright() as p:
          "팝업은 닫힘")
     pg.wait_for_timeout(1500); pg.screenshot(path=f"{OUT}/d5_장애내역_3D.png")
 
+    # 101차 — 장애예측 목록의 센서를 누르면 3D 상면의 그 센서로 (「CRAC-05 환기온도」 = 서울 배치 CRAC-05)
+    fr.select_option("#layoutSel", 부산[0]); 기다리기(fr, "window.__room3d.FMS().현장 === 'BUSAN'")
+    pg.evaluate("setMode('predict')"); pg.wait_for_timeout(500)
+    pg.wait_for_selector("#predict td.go3d", timeout=10000)
+    칸 = pg.locator("#predict td.go3d", has_text="CRAC-05 환기").first
+    확인(칸.count() == 1, f"장애예측 목록 — 센서 칸이 누를 수 있음 ({pg.locator('#predict td.go3d').count()}칸)")
+    pg.screenshot(path=f"{OUT}/d6_장애예측_센서칸.png")
+    칸.click()
+    확인(기다리기(fr, """window.__room3d.FMS().현장 === 'SEOUL' && !window.__room3d.나는중()
+      && window.__room3d.고른().some(id => (window.__room3d.모형().항목.find(i => i.id === id) || {}).점 === 'CRAC-05')
+      && (() => { const R = window.__room3d, it = R.모형().항목.find(i => i.점 === 'CRAC-05'), t = R.controls.target;
+                  return Math.hypot(t.x - it.x, t.z - it.y) < 1.5 && R.camera.position.distanceTo(t) < 15; })()"""),
+         f"장애예측 센서 → 3D 서울센터 CRAC-05 고름 ({fr.evaluate('window.__room3d.고른()')})")
+    확인(pg.evaluate("document.getElementById('modal').classList.contains('hide')"), "추세 그래프 팝업은 안 뜸 (줄 누름과 따로)")
+    pg.wait_for_timeout(1500); pg.screenshot(path=f"{OUT}/d7_장애예측_3D.png")
+
     # 저장 — 이 창 안의 가짜 API 에 남고, 다시 열면 「서버」 배치
     r = pg.evaluate("""fetch('/api/sites/1/room-layout').then(r => r.json()).then(b => b.layout)""")
     확인(r is None, "처음엔 저장된 배치 없음 (기본 배치로 열림)")
