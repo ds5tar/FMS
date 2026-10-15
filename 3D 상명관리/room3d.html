@@ -235,7 +235,7 @@
     <button id="v_top">위에서</button>
     <button id="v_eye">통로에서</button>
   </div>
-  <label style="margin-top:7px"><input type="checkbox" id="t_wallhi">벽·기둥을 전체 높이로 (3.6 m)</label>
+  <label style="margin-top:7px"><input type="checkbox" id="t_wallhi">벽을 전체 높이로 (3.6 m)</label>
   <input id="find" placeholder="찾기 — 랙 R123 · 열 C1 · AC05" autocomplete="off">
   <button id="liveBtn" title="FMS 에 붙었을 때 센서 값이 어떻게 보이는지 데모 값으로 보여 줍니다">실시간 값 미리보기 ▶</button>
   <div id="liveOpts" hidden>
@@ -366,7 +366,7 @@ const 장비 = {
   s_wind:      {이름: "풍속 센서",              분류: "센서", w: .05, d: .05, h: .15, z0: .3,  색: 0x06b6d4, 접두: "WS",  글자: "풍"},
   s_cctv:      {이름: "CCTV 카메라",            분류: "센서", w: .12, d: .2,  h: .12, z0: 3.2, 색: 0x374151, 접두: "CAM", 글자: "캠"},
   wall:        {이름: "벽",                     분류: "건축", w: 2.4, d: .2,  h: 3.6,  색: 0xf9fafb, 접두: "W"},
-  col:         {이름: "기둥",                   분류: "건축", w: 1.0, d: 1.0, h: 3.6,  색: 0x5b6068, 접두: "C"},      // 약간 짙은 회색 (99차 — 전에는 거의 검정 #262a30)
+  col:         {이름: "기둥",                   분류: "건축", w: 1.0, d: 1.0, h: 1.0,  색: 0x5b6068, 접두: "C"},      // 약간 짙은 회색 (99차 — 전에는 거의 검정 #262a30) · 높이 1 m (100차 — 전에는 3.6 m)
   door:        {이름: "출입문",                 분류: "건축", w: 1.0, d: .1,  h: 2.1,  색: 0xb08d64, 접두: "D"},
   floor:       {이름: "바닥 (이중마루) 구역",   분류: "바닥", w: 2.4, d: 2.4, h: .15,  z0: -.15, 색: 0xe8eaec, 접두: "F", 그림자: false},
 };
@@ -379,8 +379,15 @@ const 어두운가 = (n) => (((n >> 16) & 255) * .3 + ((n >> 8) & 255) * .59 + (
 /* 브라우저 보관함 — 이름별 배치 {이름: 모형} 과 지금 보는 배치 이름. 보기 화면은 지금 이름의 배치를 그린다 */
 const 보관열쇠 = "fms.room3d.layouts.v2", 지금열쇠 = "fms.room3d.current", 옛열쇠 = "fms.room3d.layout.v2";
 const 깊은복사 = (v) => JSON.parse(JSON.stringify(v));
-function 옛도면바꾸기(S) {
-  if (S.판 === 2) return S;
+/* 기둥 높이는 1 m 가 기본이다 (100차 사용자 「저장된 배치의 기둥 높이 3.6 m … 1 m 로 변경」). 옛 기본값 3.6 m 그대로인 기둥만
+   열 때 1 m 로 바꾼다 — 사람이 다른 높이로 고친 기둥은 그대로. 다음 저장 때 1 m 로 저장된다 */
+const 옛기둥높이 = 3.6;
+function 기둥높이맞추기(m) {
+  for (const it of m.항목 || []) if (it.종류 === "col" && it.h === 옛기둥높이) it.h = 장비.col.h;
+  return m;
+}
+function 옛도면바꾸기(S) { return 기둥높이맞추기(S.판 === 2 ? S : 옛판바꾸기(S)); }
+function 옛판바꾸기(S) {
   const 항목 = [], 번 = (n, k) => String(n).padStart(k, "0");
   const 넣기 = (종류, id, x, y, w, d, h, 더) => 항목.push({id, 종류, 이름: 장비[종류].이름,
     x: +(x + w / 2).toFixed(4), y: +(y + d / 2).toFixed(4), w, d, h, z0: 장비[종류].z0 || 0, 회전: 0, ...더});
@@ -417,7 +424,7 @@ try {
 /* demo.html(파일 하나 데모)은 이 문서를 srcdoc 으로 싣고 FMS데모 = true 를 먼저 둔다 — 주소에 ?fms=1 을 못 붙여서 (90차) */
 const FMS켬 = (new URLSearchParams(location.search).get("fms") === "1" || window.FMS데모 === true) && window.parent !== window;
 const 처음이름 = FMS켬 ? null : 지금이름읽기(), 저장본 = 처음이름 ? 보관읽기()[처음이름] : null;
-let 모형 = 깊은복사(저장본 && 저장본.판 === 2 ? 저장본 : 원본);
+let 모형 = 깊은복사(저장본 && 저장본.판 === 2 ? 기둥높이맞추기(저장본) : 원본);
 /* 지금 문서 — 이름(파일 이름에서 .json 을 뺀 것)과, 다른 이름으로 저장·파일 열기로 얻은 PC 파일 손잡이 */
 const 현재 = {이름: 저장본 ? 처음이름 : null, 파일: null};
 function 출처표시() {
@@ -739,9 +746,10 @@ const 고름재질 = new THREE.MeshStandardMaterial({color: 0xd97706, roughness:
 const 위재질 = new THREE.MeshStandardMaterial({color: 0xf59e0b, roughness: .7});
 
 let 벽자름 = true;
-/* 「벽·기둥을 전체 높이로」 를 끈 기본 보기의 높이. 배치 값(h)은 그대로
-   벽 0.5 m — 98차 사용자 「벽의 높이를 기본적으로 0.5 m 로」(전에는 1.2 m) · 기둥 1 m — 99차 「기둥 … 높이 1 m 가 기본」(전에는 3.6 m 그대로) */
-const 벽낮은높이 = 0.5, 기둥낮은높이 = 1.0;
+/* 「벽을 전체 높이로」 를 끈 기본 보기의 벽 높이. 배치 값(h)은 그대로
+   벽 0.5 m — 98차 사용자 「벽의 높이를 기본적으로 0.5 m 로」(전에는 1.2 m)
+   기둥은 100차부터 배치 값 자체가 1 m 라 보기에서 자르지 않는다 (99차에는 3.6 m 를 보기에서만 1 m 로 잘랐다) */
+const 벽낮은높이 = 0.5;
 const 매시들 = new Map();
 /* 점형 센서(온도·습도·온습도·누수 점형·연기·문 …)는 실물(수 cm)대로 그리면 방 전체 보기에서 점이다.
    화면에서만 두 배, 바닥 면은 적어도 12 cm 로 그린다 — 배치 값(w·d·h)과 2D 평면은 그대로 (83차 「센서의 크기를 2배로」).
@@ -752,7 +760,6 @@ function 보이는높이(it) {
   if (감지선(it)) return Math.max(it.h, .03);     // 바닥에 묻히지 않게 3 cm
   if (작은센서(it)) return it.h * 센서배;
   if (벽자름 && it.종류 === "wall") return Math.min(it.h, 벽낮은높이);
-  if (벽자름 && it.종류 === "col") return Math.min(it.h, 기둥낮은높이);
   return it.h;
 }
 const 보이는폭 = (it, v) => 작은센서(it) ? Math.max(v * 센서배, 센서최소) : v;
@@ -2067,7 +2074,7 @@ function 층보임(키, v) {
 }
 $("t_wallhi").addEventListener("change", e => {
   벽자름 = !e.target.checked;
-  for (const it of 모형.항목) if (it.종류 === "wall" || it.종류 === "col") 매시맞추기(it);
+  for (const it of 모형.항목) if (it.종류 === "wall") 매시맞추기(it);
   더러움 = true;
 });
 $("v_iso").onclick = 시점들.iso;
