@@ -101,6 +101,9 @@
   .판.접힘>.안{display:none}
   .판>.안{padding:8px 10px}
   #lib{max-height:300px;overflow-y:auto}
+  /* 속성 판 — 패널 맨 밑에 붙어 있고(짧으면 아래로 밀고, 길면 넘겨도 바닥에 고정), 내용이 길면 판 안에서 넘긴다 (94차) */
+  #p_prop{margin-top:auto;position:sticky;bottom:0;z-index:2;background:var(--e-pn);border-top:1px solid var(--e-line);border-bottom:0;flex:none}
+  #p_prop>.안{max-height:42vh;overflow-y:auto}
   .묶음이름{color:var(--e-sub);font-size:11px;margin:6px 0 4px}
   .타일들{display:grid;grid-template-columns:1fr 1fr;gap:4px}
   .타일{display:flex;gap:6px;align-items:center;background:#2a2e33;border:1px solid var(--e-line);border-radius:4px;
@@ -291,8 +294,9 @@
   <div class="판" id="p_fms" hidden><h3>FMS 센서 <span>끌어 놓으면 센서 코드가 붙습니다</span></h3><div class="안" id="fmsList"></div></div>
   <div class="판" id="p_lib"><h3>장비 <span>끌어 놓거나 누른 뒤 자리를 누릅니다</span></h3><div class="안" id="lib"></div></div>
   <div class="판" id="p_layer"><h3>레이어 <span>보임 · 잠금</span></h3><div class="안" id="layers"></div></div>
-  <div class="판" id="p_prop"><h3>속성</h3><div class="안" id="props"></div></div>
   <div class="판" id="p_hist"><h3>작업 내역 <span>누르면 그때로 돌아갑니다</span></h3><div class="안 내역" id="hist"></div></div>
+  <!-- 속성은 맨 밑에 고정 — 패널을 넘겨도 늘 보인다 (94차) -->
+  <div class="판" id="p_prop"><h3>속성</h3><div class="안" id="props"></div></div>
 </div>
 <div id="status" class="e 편집만"></div>
 <input type="file" id="fileIn" accept=".json,application/json" hidden>
@@ -2142,6 +2146,15 @@ function 평면맞추기() {
   평면cam.top = H / 2 / 평면.배율; 평면cam.bottom = -H / 2 / 평면.배율;
   평면cam.position.set(평면.cx, 80, 평면.cy); 평면cam.lookAt(평면.cx, 0, 평면.cy);
   평면cam.updateProjectionMatrix(); 더러움 = true;
+  덧그리기예약();
+}
+/* 평면을 옮기거나 키우면 덧그림(고른 테두리·손잡이·이름·센서 표시)도 같은 장에 다시 그린다 (95차).
+   전에는 부른 곳마다 덧그리기를 따로 불렀고, 레이어 목록 두 번 누르기·보기 메뉴(확대·축소·맞추기)·돋보기는 빠져
+   그림만 옮겨 가고 테두리·이름은 옛 자리에 남았다. 한 장에 한 번만 — 손으로 끌 때 여러 번 불려도 그리기는 한 번 */
+let 덧예약 = 0;
+function 덧그리기예약() {
+  if (덧예약) return;
+  덧예약 = requestAnimationFrame(() => { 덧예약 = 0; 덧그리기(); if (편집중) 상태줄(); });
 }
 function 평면전체() {
   평면.배율 = Math.min((W - 60) / (방().w + 1), (H - 60) / (방().d + 1));
