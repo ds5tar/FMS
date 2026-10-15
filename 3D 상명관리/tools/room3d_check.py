@@ -185,6 +185,16 @@ try:
         확인(not pg.evaluate("window.__room3d.라이브().켬") and pg.locator("#alarms").is_hidden(), "실시간 미리보기 끄기")
         pg.click("#v_iso"); 다옴()
 
+        # ── 98차 — 벽은 기본 0.5 m 높이로 보인다(「벽을 전체 높이로」 를 켜면 3.6 m, 끄면 다시 0.5 m). 배치 값(h)은 그대로 ──
+        벽id = pg.evaluate("window.__room3d.모형().항목.find(i => i.종류 === 'wall').id")
+        벽높이 = lambda: pg.evaluate("id => window.__room3d.그린크기(id)[2]", 벽id)
+        h0 = 벽높이()
+        pg.evaluate("const c = document.getElementById('t_wallhi'); c.checked = true; c.dispatchEvent(new Event('change'))"); h1 = 벽높이()
+        pg.evaluate("const c = document.getElementById('t_wallhi'); c.checked = false; c.dispatchEvent(new Event('change'))"); h2 = 벽높이()
+        원높이 = pg.evaluate("id => window.__room3d.모형().항목.find(i => i.id === id).h", 벽id)
+        확인(abs(h0 - .5) < 1e-6 and abs(h1 - 원높이) < 1e-6 and abs(h2 - .5) < 1e-6 and 원높이 > 1,
+             f"벽 기본 높이 0.5 m ({벽id} 처음 {h0} · 전체 높이 {h1} · 다시 {h2} · 배치 값 {원높이})")
+
         # ── 편집기 ──
         pg.click("#toEdit"); pg.wait_for_timeout(1200)
         확인(pg.evaluate("document.body.classList.contains('편집')"), "편집 모드로 바뀜")
