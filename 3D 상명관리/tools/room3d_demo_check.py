@@ -38,6 +38,24 @@ with sync_playwright() as p:
     pg.on("console", lambda m: m.type in ("error", "warning") and 오류.append(m.text))
     pg.on("pageerror", lambda e: 오류.append(str(e)))
     pg.goto(DEMO.as_uri()); pg.wait_for_timeout(2500)
+
+    # 96차 — 3D 를 한 번도 안 연 채 장애 내역 팝업의 센서를 눌러도 그 센서까지 시선이 간다.
+    # 전에는 3D 화면이 처음 뜨면서 현장을 읽는 동안 「그 센서로 가기」 가 먼저 와서 버려졌다 — 3D 화면만 뜨고 끝
+    pg.evaluate("showKpiDetail('sensor', '이상이 있는 센서')")
+    pg.wait_for_selector("#modal td.go3d", timeout=10000)
+    pg.locator("#modal td.go3d", has_text="CRAC-05 펌프1").first.click()
+    fr0 = None
+    for _ in range(100):
+        fr0 = next((f for f in pg.frames if f != pg.main_frame and f.url == "about:srcdoc"), None)
+        if fr0: break
+        time.sleep(.2)
+    처음 = fr0 is not None and 기다리기(fr0, """window.__room3d && window.__room3d.FMS().현장 === 'SEOUL' && !window.__room3d.나는중()
+      && window.__room3d.고른().some(id => (window.__room3d.모형().항목.find(i => i.id === id) || {}).점 === 'CRAC-05')
+      && (() => { const R = window.__room3d, it = R.모형().항목.find(i => i.점 === 'CRAC-05'), t = R.controls.target;
+                  return Math.hypot(t.x - it.x, t.z - it.y) < 1.5 && R.camera.position.distanceTo(t) < 15; })()""")
+    확인(처음, f"3D 를 처음 열면서 센서 칸 → 그 센서까지 시선 ({fr0.evaluate('window.__room3d.고른()') if fr0 else None})")
+    pg.screenshot(path=f"{OUT}/d0_처음_센서로.png")
+    pg.evaluate("setMode('dash')"); pg.wait_for_timeout(500)
     pg.click('#menu button[data-mode="room3d"]')
     fr = None
     for _ in range(100):
@@ -81,7 +99,10 @@ with sync_playwright() as p:
     확인(칸.count() == 1, "장애 내역 팝업 — 센서 칸이 누를 수 있음")
     pg.screenshot(path=f"{OUT}/d4_장애내역_센서칸.png")
     칸.click()
-    확인(기다리기(fr, "window.__room3d.FMS().현장 === 'SEOUL' && window.__room3d.고른().some(id => (window.__room3d.모형().항목.find(i => i.id === id) || {}).점 === 'CRAC-05')"),
+    확인(기다리기(fr, """window.__room3d.FMS().현장 === 'SEOUL' && !window.__room3d.나는중()
+      && window.__room3d.고른().some(id => (window.__room3d.모형().항목.find(i => i.id === id) || {}).점 === 'CRAC-05')
+      && (() => { const R = window.__room3d, it = R.모형().항목.find(i => i.점 === 'CRAC-05'), t = R.controls.target;
+                  return Math.hypot(t.x - it.x, t.z - it.y) < 1.5 && R.camera.position.distanceTo(t) < 15; })()"""),
          f"센서 칸 → 3D 서울센터 CRAC-05 고름 ({fr.evaluate('window.__room3d.고른()')})")
     확인(pg.evaluate("document.getElementById('modal').classList.contains('hide') || !document.querySelector('#modal td.go3d')"),
          "팝업은 닫힘")
