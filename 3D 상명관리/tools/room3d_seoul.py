@@ -80,9 +80,9 @@ def build() -> dict:
         add("door", f"D{i:02d}", x, y, 1.0 if abs(y - 7.6) < 1e-9 else .1, .1 if abs(y - 7.6) < 1e-9 else 1.0, 2.1,
             이름=["관제실 문", "복도 문", "전기실 문"][i - 1])
 
-    # 기둥 — 위쪽 벽의 검은 네모
+    # 기둥 — 위쪽 벽의 검은 네모. 높이 1 m (100차 — 3D 편집기 기둥 기본 높이와 같게. 전에는 방 높이 3.6 m)
     for i, px in enumerate(COL_PX, 1):
-        add("col", f"C{i:02d}", round(px * KX, 3), 1.0, .6, .6, H)
+        add("col", f"C{i:02d}", round(px * KX, 3), 1.0, .6, .6, 1.0)
 
     # 항온항습기 9대 — 위쪽 벽, 코드 CRAC-0n
     for i, px in enumerate(CRAC_PX, 1):

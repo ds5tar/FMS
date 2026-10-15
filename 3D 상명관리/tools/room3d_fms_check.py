@@ -139,12 +139,19 @@ try:
         pid = pg.evaluate("S.alarms.filter(a => /누수 12/.test(a.message))[0].point_id")
         pg.evaluate(f"openRoom3d(1, {pid})"); fr.wait_for_timeout(900)
         확인("3D 배치에 없습니다" in fr.inner_text("#info") and "LEAK.12" in fr.inner_text("#info"), "배치 안 된 센서의 「3D」 — 끌어 놓으라고 알림")
+        # 97차부터 같은 알림이 팝업창으로도 뜬다 — 닫아야 다음 단추를 누를 수 있다
+        글 = fr.evaluate("(document.querySelector('.대화막') || {}).textContent || ''")
+        확인("3D 배치에 없습니다" in 글, f"배치 안 된 센서 — 팝업창 ({글[:40]})")
+        fr.evaluate("[...document.querySelectorAll('.대화막 button')].find(b => b.textContent === '닫기').click()")
+        확인(fr.evaluate("!document.querySelector('.대화막')"), "팝업창 「닫기」")
 
         # ── 4. 배치도(2D)의 「3D 로 보기」 ──
         pg.click('#menu button[data-mode="dash"]'); pg.wait_for_timeout(800)
         pg.evaluate("openDashboard(S.dashboards.filter(d => d.code === 'FLOOR3')[0].id)")
         pg.wait_for_timeout(2000)
-        확인(pg.locator(".plan .go3d").count() == 1, "2D 배치도는 그대로, 「3D 로 보기」 단추")
+        try: pg.wait_for_selector(".plan .go3d", timeout=15000)
+        except Exception: pass
+        확인(pg.locator(".plan .go3d").count() == 1, f"2D 배치도는 그대로, 「3D 로 보기」 단추 ({pg.locator('.plan .go3d').count()}개)")
         pg.screenshot(path=f"{OUT}/07_2D배치도_3D단추.png")
         pg.click(".plan .go3d"); pg.wait_for_timeout(800)
         확인(pg.eval_on_selector("#room3d", "e => !e.classList.contains('hide')"), "「3D 로 보기」 → 3D 상면")
@@ -282,6 +289,35 @@ try:
         pg.screenshot(path=f"{OUT}/12_대전_둘레누수_6m.png")
         fr.evaluate("window.__room3d.덮어쓰기({})")
         fr.select_option("#layoutSel", "1"); 기다리기(fr, "window.__room3d.FMS().현장 === 'SEOUL' && window.__room3d.FMS().출처 === '서버'", 15000)
+
+        # ── 6b. 제조사·모델별 실사 모델 — DB(topo.room3d_model)에 올리면 3D 가 그 모양으로 (103차 「모델별 실사자료는 db에 미리 저장」) ──
+        import struct as _st
+        _pos = b"".join(_st.pack("<3f", *v) for v in [(-1, -1, -1), (1, -1, -1), (1, 1, -1), (-1, 1, 1)])
+        _idx = _st.pack("<6H", 0, 1, 2, 0, 2, 3) + b"\0\0"
+        _js = json.dumps({"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+                          "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}], "buffers": [{"byteLength": len(_pos) + len(_idx)}],
+                          "bufferViews": [{"buffer": 0, "byteLength": len(_pos)}, {"buffer": 0, "byteOffset": len(_pos), "byteLength": 12}],
+                          "accessors": [{"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3"},
+                                        {"bufferView": 1, "componentType": 5123, "count": 6, "type": "SCALAR"}]}).encode()
+        _js += b" " * (-len(_js) % 4)
+        _bin = _pos + _idx
+        _body = _st.pack("<II", len(_js), 0x4E4F534A) + _js + _st.pack("<II", len(_bin), 0x004E4942) + _bin
+        시험glb = list(_st.pack("<III", 0x46546C67, 2, 12 + len(_body)) + _body)
+        tok = pg.evaluate("TOKEN")
+        올림 = pg.evaluate("""([t, b]) => fetch('/api/room3d/models?kind=ups&license=CC0-1.0&author=시험&name=t.glb', {method: 'POST',
+            headers: {Authorization: 'Bearer ' + t, 'Content-Type': 'model/gltf-binary'}, body: new Uint8Array(b)}).then(r => r.json().then(j => [r.status, j]))""", [tok, 시험glb])
+        확인(올림[0] == 201, f"DB 에 UPS 기본 모델 올리기 (CC0) — {올림}")
+        fr.evaluate("window.__room3d.모델다시읽기()")
+        기다리기(fr, "(e => e && e.상태 === '씀')(window.__room3d.모델정보('ups'))", 15000)
+        정보 = fr.evaluate("window.__room3d.모델정보('ups')")
+        확인(fr.evaluate("window.__room3d.모델붙음('UPS01') !== null"), f"서울 UPS01 이 DB 모델로 그려짐 — {정보}")
+        fr.evaluate("window.__room3d.모델창()"); fr.wait_for_timeout(800)
+        창글 = fr.evaluate("(document.querySelector('.대화막') || {}).textContent || ''")
+        확인("CC0-1.0" in 창글 and "DB 에 올리기" in 창글, f"「3D 모델」 창 — DB 목록·올리기 ({창글[:60]})")
+        fr.evaluate("[...document.querySelectorAll('.대화막 button')].find(b => b.textContent === '닫기').click()")
+        지움 = pg.evaluate("([t, i]) => fetch('/api/room3d/models/' + i, {method: 'DELETE', headers: {Authorization: 'Bearer ' + t}}).then(r => r.status)", [tok, 올림[1]["id"]])
+        fr.evaluate("window.__room3d.모델다시읽기()"); fr.wait_for_timeout(1500)
+        확인(지움 == 200 and fr.evaluate("window.__room3d.모델붙음('UPS01') === null && window.__room3d.부품('UPS01') !== null"), "DB 에서 지우면 다시 부품 모양")
 
         # ── 7. 로그아웃하면 iframe(토큰)을 버린다 · 보기 권한만 있으면 저장 안 됨 ──
         pg.click("#logoutBtn"); pg.wait_for_timeout(500)
