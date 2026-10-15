@@ -189,6 +189,50 @@ try:
         pg.click("#toEdit"); pg.wait_for_timeout(1200)
         확인(pg.evaluate("document.body.classList.contains('편집')"), "편집 모드로 바뀜")
         pg.screenshot(path=f"{OUT}/10_편집_평면.png")
+        # 94차 — 속성 판은 오른쪽 패널 맨 밑에 고정 (패널을 위·아래로 넘겨도 늘 보인다)
+        def 속성자리():
+            return pg.evaluate("""() => { const P = document.getElementById('panels'), Q = document.getElementById('p_prop');
+              const a = P.getBoundingClientRect(), b = Q.getBoundingClientRect();
+              return {끝: P.lastElementChild === Q, 아래: Math.round(a.bottom - b.bottom), 위안: b.top >= a.top - 1, 넘침: P.scrollHeight > P.clientHeight}; }""")
+        pg.evaluate("document.querySelectorAll('#panels .판').forEach(x => x.classList.remove('접힘')); document.getElementById('panels').scrollTop = 0")
+        s0 = 속성자리()
+        pg.evaluate("const P = document.getElementById('panels'); P.scrollTop = P.scrollHeight"); pg.wait_for_timeout(200)
+        s1 = 속성자리()
+        pg.evaluate("document.getElementById('p_hist').classList.add('접힘'); document.getElementById('p_lib').classList.add('접힘'); document.getElementById('p_layer').classList.add('접힘'); document.getElementById('panels').scrollTop = 0")
+        s2 = 속성자리()
+        pg.evaluate("document.querySelectorAll('#panels .판').forEach(x => x.classList.remove('접힘')); document.getElementById('panels').scrollTop = 0")
+        확인(s0["끝"] and all(0 <= s["아래"] <= 2 and s["위안"] for s in (s0, s1, s2)),
+             f"속성 판 — 패널 맨 밑에 고정 (위로 넘김 {s0} · 아래로 넘김 {s1} · 다른 판 접음 {s2})")
+
+        # 95차 — 레이어 목록 두 번 누르기(그 장비로 가기)·보기 메뉴 확대·맞추기·돋보기 뒤에도 덧그림(고른 테두리·손잡이·이름)이
+        # 그림과 같은 자리에 있어야 한다. 전에는 평면만 옮기고 덧그림을 안 다시 그려 둘이 갈라졌다
+        def 덧그림():
+            return pg.evaluate("""() => { const R = window.__room3d, id = R.고른()[0], it = R.모형().항목.find(i => i.id === id);
+              const [cx, cy] = R.평면에서화면(it.x, it.y), r = Math.hypot(it.w, it.d) / 2 * R.평면.배율 + 45;       // 45 px — 위로 솟은 돌리기 손잡이까지
+              const ov = document.getElementById('ov'), k = ov.width / ov.clientWidth, w = ov.width, h = ov.height;
+              const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;      // 덧그림 판을 매번 새 판에 옮겨 읽는다 — 같은 판을 여러 번 읽으면 크롬이 경고
+              const g2 = c2.getContext('2d', {willReadFrequently: true}); g2.drawImage(ov, 0, 0);
+              const d = g2.getImageData(0, 0, w, h).data; let 안 = 0, 밖 = 0;
+              for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) { const i = (y * w + x) * 4;
+                if (d[i + 3] > 200 && Math.abs(d[i] - 11) < 30 && Math.abs(d[i + 1] - 155) < 40 && Math.abs(d[i + 2] - 224) < 40)
+                  (Math.abs(x / k - cx) <= r && Math.abs(y / k - cy) <= r) ? 안++ : 밖++; }
+              return {id, 안, 밖}; }""")
+        def 맞나(d):
+            return d["안"] > 20 and d["밖"] <= (d["안"] + d["밖"]) * 0.1
+        pg.evaluate("[...document.querySelectorAll('#layers .층 .이')].find(x => x.textContent.includes('랙')).click()")
+        줄 = pg.locator("#layers .층목록 div").first
+        줄.click(); pg.wait_for_timeout(200); 줄.dblclick(); pg.wait_for_timeout(600)
+        d1 = 덧그림()
+        def 메뉴(이름, 항):
+            pg.evaluate("n => [...document.querySelectorAll('#menus .메뉴 > button')].find(x => x.textContent.trim() === n).click()", 이름)
+            pg.wait_for_timeout(150)
+            pg.evaluate("n => [...document.querySelectorAll('.메뉴.열림 .아래 div.항')].find(x => x.textContent.startsWith(n)).click()", 항)
+            pg.wait_for_timeout(600)
+        메뉴("보기", "확대"); d2 = 덧그림()
+        메뉴("보기", "화면에 맞추기"); d3 = 덧그림()
+        확인(맞나(d1) and 맞나(d2) and 맞나(d3),
+             f"덧그림이 그림을 따라감 — 레이어 두 번 누르기 {d1} · 보기›확대 {d2} · 보기›화면에 맞추기 {d3}")
+        pg.keyboard.press("Control+d"); pg.wait_for_timeout(200)
         타일 = pg.locator("#lib .타일")
         이름들 = 타일.all_inner_texts()
         확인(타일.count() >= 28, f"장비 라이브러리 {타일.count()}종")
