@@ -186,14 +186,16 @@ try:
         pg.click("#v_iso"); 다옴()
 
         # ── 98차 — 벽은 기본 0.5 m 높이로 보인다(「벽을 전체 높이로」 를 켜면 3.6 m, 끄면 다시 0.5 m). 배치 값(h)은 그대로 ──
-        벽id = pg.evaluate("window.__room3d.모형().항목.find(i => i.종류 === 'wall').id")
-        벽높이 = lambda: pg.evaluate("id => window.__room3d.그린크기(id)[2]", 벽id)
-        h0 = 벽높이()
-        pg.evaluate("const c = document.getElementById('t_wallhi'); c.checked = true; c.dispatchEvent(new Event('change'))"); h1 = 벽높이()
-        pg.evaluate("const c = document.getElementById('t_wallhi'); c.checked = false; c.dispatchEvent(new Event('change'))"); h2 = 벽높이()
-        원높이 = pg.evaluate("id => window.__room3d.모형().항목.find(i => i.id === id).h", 벽id)
-        확인(abs(h0 - .5) < 1e-6 and abs(h1 - 원높이) < 1e-6 and abs(h2 - .5) < 1e-6 and 원높이 > 1,
-             f"벽 기본 높이 0.5 m ({벽id} 처음 {h0} · 전체 높이 {h1} · 다시 {h2} · 배치 값 {원높이})")
+        # ── 99차 — 기둥도 기본 1 m 높이로 보인다(같은 체크로 전체 높이) ──
+        for 종류, 낮은 in (("wall", .5), ("col", 1.0)):
+            벽id = pg.evaluate("k => window.__room3d.모형().항목.find(i => i.종류 === k).id", 종류)
+            벽높이 = lambda: pg.evaluate("id => window.__room3d.그린크기(id)[2]", 벽id)
+            h0 = 벽높이()
+            pg.evaluate("const c = document.getElementById('t_wallhi'); c.checked = true; c.dispatchEvent(new Event('change'))"); h1 = 벽높이()
+            pg.evaluate("const c = document.getElementById('t_wallhi'); c.checked = false; c.dispatchEvent(new Event('change'))"); h2 = 벽높이()
+            원높이 = pg.evaluate("id => window.__room3d.모형().항목.find(i => i.id === id).h", 벽id)
+            확인(abs(h0 - 낮은) < 1e-6 and abs(h1 - 원높이) < 1e-6 and abs(h2 - 낮은) < 1e-6 and 원높이 > 1,
+                 f"{'벽' if 종류 == 'wall' else '기둥'} 기본 높이 {낮은} m ({벽id} 처음 {h0} · 전체 높이 {h1} · 다시 {h2} · 배치 값 {원높이})")
 
         # ── 편집기 ──
         pg.click("#toEdit"); pg.wait_for_timeout(1200)
@@ -249,6 +251,8 @@ try:
         for 꼭 in ["서버 랙", "항온항습기", "스탠드 에어컨", "천장형 에어컨", "벽걸이 에어컨", "기류(플로우) 화살표", "온도 센서",
                    "습도 센서", "온습도 센서", "누수 감지선", "연기 감지기", "CCTV", "UPS", "벽", "기둥", "출입문", "바닥"]:
             확인(any(꼭 in n for n in 이름들), f"라이브러리에 「{꼭}」")
+        기둥색 = pg.evaluate("[...document.querySelectorAll('#lib .타일')].find(t => t.textContent.includes('기둥')).querySelector('.견').style.background")
+        확인(기둥색 == "rgb(91, 96, 104)", f"기둥 색 — 약간 짙은 회색 #5b6068 ({기둥색})")      # 99차
 
         def 평(x, y):
             return pg.evaluate("""([x, y]) => { const r = document.getElementById('stage').getBoundingClientRect();
