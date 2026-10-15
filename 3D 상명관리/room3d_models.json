@@ -1,0 +1,4 @@
+{
+ "설명": "3D 상면 설비 모델 목록 — 이 화면만 따로 열 때 쓴다(FMS 안에서는 DB topo.room3d_model). [{종류, 제조사?, 모델?, file, license, author, source}] — 무료로 팔 수 있는 라이선스(CC0·CC-BY·MIT·Apache-2.0 등)만 쓴다. 자세한 것은 10_database/room3d_models/README.md",
+ "models": []
+}

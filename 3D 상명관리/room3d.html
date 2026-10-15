@@ -16,6 +16,10 @@
   #cv.over{cursor:pointer}
   #cv.drag{cursor:grabbing}
   #ov{pointer-events:none}
+  .모델표{border-collapse:collapse;font-size:12px;margin:6px 0;width:100%}
+  .모델표 th,.모델표 td{border-bottom:1px solid var(--선,#e5e7eb);padding:3px 6px;text-align:left}
+  #credits{position:fixed;right:8px;bottom:4px;z-index:3;font-size:10.5px;color:#6b7280;background:rgba(255,255,255,.7);padding:1px 6px;border-radius:4px;pointer-events:none;max-width:60vw}
+  [data-theme="dark"] #credits{color:#9ca3af;background:rgba(14,17,22,.7)}
   .panel{position:fixed;background:var(--panel);border:1px solid var(--line);
     border-radius:9px;padding:12px 14px;box-shadow:0 3px 18px #0001}
   #ui{top:14px;left:14px;width:226px}
@@ -222,6 +226,7 @@
 </head>
 <body>
 <div id="stage"><canvas id="cv"></canvas><canvas id="ov"></canvas></div>
+<div id="credits" hidden></div>
 
 <!-- ── 보기 모드 ── -->
 <div id="ui" class="panel 보기만">
@@ -236,6 +241,7 @@
     <button id="v_eye">통로에서</button>
   </div>
   <label style="margin-top:7px"><input type="checkbox" id="t_wallhi">벽을 전체 높이로 (3.6 m)</label>
+  <label title="금속 판·손잡이에 방이 비칩니다. 그래픽 카드가 없는 PC(원격 데스크톱 등)에서는 느려 처음엔 꺼져 있습니다"><input type="checkbox" id="t_hq">반사 (고화질)</label>
   <input id="find" placeholder="찾기 — 랙 R123 · 열 C1 · AC05" autocomplete="off">
   <button id="liveBtn" title="FMS 에 붙었을 때 센서 값이 어떻게 보이는지 데모 값으로 보여 줍니다">실시간 값 미리보기 ▶</button>
   <div id="liveOpts" hidden>
@@ -480,6 +486,10 @@ try {
 }
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;      // r185 에서 PCFSoft 는 없어졌다
+/* 색 보정 (103차 ③) — Khronos PBR Neutral 톤매핑. 밝은 곳이 하얗게 날아가지 않고, ACES 와 달리 설비·경보 색(빨강·주황)을 거의 그대로 둔다.
+   글자표·경보 표시처럼 화면 색이 정해진 것은 toneMapped:false 로 빼 둔다 */
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
@@ -513,11 +523,13 @@ controls.minDistance = 1.2;
 controls.maxDistance = 160;
 controls.mouseButtons = {LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN};
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0xd9dee4, 2.0));
+scene.add(new THREE.HemisphereLight(0xffffff, 0xd9dee4, 1.5));      // 환경 반사(103차)가 빛을 더하므로 2.0 → 1.5
 const 해 = new THREE.DirectionalLight(0xffffff, 1.5);
 해.castShadow = true;
 해.shadow.mapSize.set(2048, 2048);
 해.shadow.bias = -0.0005;
+해.shadow.normalBias = .02;               // 부품(손잡이·문틀)의 얇은 면에 생기는 그림자 줄무늬를 막는다
+해.shadow.radius = 3;
 scene.add(해, 해.target);
 function 빛맞추기() {
   const r = Math.max(방().w, 방().d) * 0.75 + 4;
@@ -643,7 +655,9 @@ function 세부재질(종류, 앞x) {      // 앞x = 앞·뒤가 ±x 면인가 (
   const 키 = 종류 + (앞x ? "x" : "z"); if (재질칸.has(키)) return 재질칸.get(키);
   const k = 장비[종류], s = 세부종류[종류], 색 = 색글16(k.색);
   const 그림 = (이름) => { if (!이름) return null; const 열쇠 = 이름 + 색; if (!그림칸.has(열쇠)) 그림칸.set(열쇠, 세부그림[이름](색)); return 그림칸.get(열쇠); };
-  const 판 = (map) => new THREE.MeshStandardMaterial({color: map ? 0xffffff : k.색, map, roughness: .78, metalness: .05});
+  /* 요철 지도(노멀맵)와 금속 느낌 (103차 ②) — 랙은 도장 강판(조금 반짝), 공조·전력은 무광 도장 */
+  const 랙 = k.분류 === "랙", 판 = (map) => new THREE.MeshStandardMaterial({color: map ? 0xffffff : k.색, map, normalMap: 노멀그림(map),
+    normalScale: new THREE.Vector2(.9, .9), roughness: 랙 ? .5 : .62, metalness: 랙 ? .45 : .18});
   const 앞 = 판(그림(s.앞)), 옆 = 판(그림(s.옆)), 위 = s.위 ? 판(그림(s.위)) : 판(null);
   const m = 앞x ? [앞, 앞, 위, 위, 옆, 옆] : [옆, 옆, 위, 위, 앞, 앞];      // 상자 면 차례: +x −x +y −y +z −z
   재질칸.set(키, m); return m;
@@ -665,6 +679,7 @@ function 랙앞x(it) {
   앞축칸.set(키, 답); return 답;
 }
 function 기본재질(it) {
+  if (모델쓰나(it)) return 모델몸체재질;                      // 실사 모델을 단 설비 — 몸체는 누르기·칠에만 (103차)
   const s = 세부종류[it.종류]; if (!s) return 재질(it.종류);
   if (분류(it) === "랙") return 세부재질(it.종류, 랙앞x(it));
   const 깊은x = it.w > it.d;                                  // 평면 x 가 더 긴 변
@@ -787,7 +802,410 @@ function 매시맞추기(it) {
   m.rotation.set(0, -라(it.회전 || 0), 0);
   m.visible = 보이나(it);
   m.userData.id = it.id;
+  부품맞추기(m, it, h); 이름판맞추기(m, it, h); 모델맞추기(m, it);      // 103차 — 입체 부품·제조사 이름판·실사 모델
   return m;
+}
+
+/* ── 설비 세부 부품 (103차 사용자 「설비의 모양이 좀 더 디테일하고 정교하게」 — ① 부품 붙이기) ─────────────────
+   상자(몸체) 하나에 앞·옆·위 그림만 붙이면 가까이서 납작하다. 받침·문틀·손잡이·경첩·그릴·표시창을 입체로 덧붙인다.
+   · 몸체의 자식으로 단다 — 위치·회전·숨김·지우기가 몸체를 따라간다. 몸체는 (w, h, d) 로 늘려 그리므로 자식은 그 배율을 되돌려(1/w …) 미터로 만든다
+   · 고르기(광선)는 몸체만 본다(intersectObjects(…, false)) — 부품을 눌러도 그 설비. 고름·경보 칠은 몸체 재질만 바뀐다
+   · 부품은 종류·크기·앞 방향이 같으면 도형 하나를 같이 쓴다(랙 수백 대가 도형 하나). 재질 6가지를 도형 묶음(groups)으로 한 매시에 그린다
+   · 앞은 +z 로 만들고, 앞이 ±x 면이면 90° 돌린다. 앞·뒤 문이 다 있는 설비(랙·공조 등 — 그림도 앞·뒤에 같이 붙는다)는 양쪽에 단다 */
+const 부품재질 = [
+  new THREE.MeshStandardMaterial({color: 0x2b3036, roughness: .45, metalness: .55}),     // 0 틀·문테·윗판
+  new THREE.MeshStandardMaterial({color: 0xc3c8cf, roughness: .25, metalness: .9}),      // 1 손잡이·경첩
+  new THREE.MeshStandardMaterial({color: 0x1b1e22, roughness: .7, metalness: .3}),       // 2 받침
+  new THREE.MeshStandardMaterial({color: 0x454c55, roughness: .5, metalness: .5}),       // 3 그릴·환기구
+  new THREE.MeshStandardMaterial({color: 0x0b1220, roughness: .15, metalness: .1, emissive: 0x1e3a8a, emissiveIntensity: .3}),    // 4 표시창
+  new THREE.MeshStandardMaterial({color: 0xd5dbe1, roughness: .55, metalness: .2}),      // 5 밝은 판(공조 윗판)
+];
+const [틀, 손잡이, 받침, 그릴, 화면판, 밝은판] = [0, 1, 2, 3, 4, 5];
+function 부품모음() {
+  const 조각 = [];
+  const 넣기 = (mi, g, x, y, z) => { g = g.index ? g.toNonIndexed() : g; g.translate(x, y, z); 조각.push({mi, g}); };
+  return {
+    조각,
+    상자(mi, sx, sy, sz, x, y, z) { 넣기(mi, new THREE.BoxGeometry(sx, sy, sz), x, y, z); },
+    원기둥(mi, r, l, x, y, z, 축 = "y") {
+      const g = new THREE.CylinderGeometry(r, r, l, 10);
+      if (축 === "x") g.rotateZ(Math.PI / 2); else if (축 === "z") g.rotateX(Math.PI / 2);
+      넣기(mi, g, x, y, z);
+    },
+  };
+}
+function 부품합치기(조각) {          // 같은 재질끼리 이어 붙여 묶음(groups) 하나씩
+  조각.sort((a, b) => a.mi - b.mi);
+  let n = 0; for (const c of 조각) n += c.g.attributes.position.count;
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2), g = new THREE.BufferGeometry();
+  let o = 0, 시작 = 0, 지금 = -1;
+  for (const c of 조각) {
+    const a = c.g.attributes;
+    pos.set(a.position.array, o * 3); nor.set(a.normal.array, o * 3); uv.set(a.uv.array, o * 2);
+    if (c.mi !== 지금) { if (지금 >= 0) g.addGroup(시작, o - 시작, 지금); 지금 = c.mi; 시작 = o; }
+    o += a.position.count; c.g.dispose();
+  }
+  if (지금 >= 0) g.addGroup(시작, o - 시작, 지금);
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  g.computeBoundingBox(); g.computeBoundingSphere(); g.userData.조각 = 조각.length;
+  return g;
+}
+/* 종류별 부품 — fw 앞 폭, dp 깊이, h 높이. 가운데가 원점, 앞이 +z(뒤 −z). 앞 그림(세부그림)의 손잡이·표시창 자리에 맞춘다 */
+const 부품그리기 = {
+  랙(P, fw, dp, h) {
+    P.상자(받침, fw + .008, .08, dp + .008, 0, -h / 2 + .04, 0);                               // 받침(굽도리)
+    P.상자(틀, fw + .012, .025, dp + .012, 0, h / 2 - .012, 0);                                // 윗판
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.상자(틀, .03, h - .1, .03, sx * (fw / 2 - .012), 0, sz * (dp / 2 - .012));   // 모서리 기둥
+    for (const s of [1, -1]) {                                                                 // 앞문·뒷문
+      const z = s * dp / 2;
+      P.상자(틀, fw - .02, .03, .01, 0, h / 2 - .05, z + s * .005); P.상자(틀, fw - .02, .03, .01, 0, -h / 2 + .1, z + s * .005);
+      for (const sx of [-1, 1]) P.상자(틀, .03, h - .16, .01, sx * (fw / 2 - .025), .02, z + s * .005);
+      const hx = s * (fw / 2 - .07);
+      P.상자(틀, .04, .3, .008, hx, .05, z + s * .006); P.상자(손잡이, .022, .24, .02, hx, .05, z + s * .02);      // 손잡이
+      for (const y of [-h * .32, 0, h * .32]) P.상자(손잡이, .016, .07, .016, -s * (fw / 2 - .02), y, z + s * .008);   // 경첩
+    }
+    for (const sx of [-1, 1]) P.상자(그릴, .12, .012, .08, sx * fw * .25, h / 2 + .006, -dp * .3);   // 위 케이블 구멍 덮개
+  },
+  공조(P, fw, dp, h) {
+    P.상자(받침, fw + .01, .1, dp + .01, 0, -h / 2 + .05, 0);
+    P.상자(그릴, fw - .08, .02, dp - .08, 0, h / 2 + .01, 0);                                   // 위 토출구
+    const 살 = Math.max(3, Math.floor((fw - .12) / .06));
+    for (let i = 0; i < 살; i++) P.상자(틀, .012, .03, dp - .1, -fw / 2 + .06 + (i + .5) * (fw - .12) / 살, h / 2 + .025, 0);
+    const 문 = fw > 1 ? 3 : 1, dw = fw / 문;
+    for (const s of [1, -1]) {
+      const z = s * dp / 2;
+      for (let i = 0; i < 문; i++) {
+        const hx = s * (-fw / 2 + (i + 1) * dw - Math.min(.07, dw * .2));
+        P.상자(틀, .036, .34, .008, hx, .08, z + s * .006); P.상자(손잡이, .022, .3, .022, hx, .08, z + s * .022);
+      }
+      for (let i = 1; i < 문; i++) P.상자(틀, .008, h - .14, .006, s * (-fw / 2 + i * dw), 0, z + s * .003);        // 문 틈
+      if (문 === 3) {                     // 가운데 문 위 표시창 (그림 512×400 의 dw+30 ~ 2dw-30, 40 ~ 100)
+        const 폭 = fw * 110.7 / 512, 높 = h * 60 / 400, yc = h / 2 - h * 70 / 400;
+        P.상자(틀, 폭 + .03, 높 + .03, .006, 0, yc, z + s * .003); P.상자(화면판, 폭, 높, .012, 0, yc, z + s * .007);
+      }
+    }
+  },
+  유피에스(P, fw, dp, h) {
+    P.상자(받침, fw + .01, .08, dp + .01, 0, -h / 2 + .04, 0);
+    P.상자(틀, fw + .006, .02, dp + .006, 0, h / 2 - .01, 0);
+    for (let i = 0; i < 6; i++) P.상자(그릴, fw * .6, .008, .04, 0, h / 2 + .004, -dp / 2 + .1 + i * (dp - .2) / 5);   // 위 환기 틈
+    for (const s of [1, -1]) {
+      const z = s * dp / 2, X = (px) => s * (-fw / 2 + px / 400 * fw), Y = (py) => h / 2 - py / 520 * h;
+      P.상자(틀, fw * 160 / 400, h * 100 / 520, .006, X(110), Y(90), z + s * .003);                // LCD 테
+      P.상자(화면판, fw * 140 / 400, h * 80 / 520, .012, X(110), Y(90), z + s * .007);             // LCD
+      for (const px of [184.5, 215.5]) P.상자(손잡이, .018, h * 50 / 520, .02, X(px), Y(.4 * 520 + 25), z + s * .018);
+      P.상자(틀, .008, h - .12, .006, 0, 0, z + s * .003);                                          // 두 문 사이 틈
+      for (let i = 0; i < 4; i++) P.원기둥(손잡이, .012, .01, X(60 + i * 26), Y(160), z + s * .005, "z");   // 상태등
+    }
+  },
+  배터리(P, fw, dp, h) {
+    P.상자(받침, fw + .01, .08, dp + .01, 0, -h / 2 + .04, 0);
+    P.상자(틀, fw + .012, .025, dp + .012, 0, h / 2 - .012, 0);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.상자(틀, .035, h - .1, .035, sx * (fw / 2 - .014), 0, sz * (dp / 2 - .014));
+    for (const s of [1, -1]) {
+      const z = s * dp / 2;
+      for (let j = 1; j < 5; j++) P.상자(틀, fw - .04, .018, .02, 0, -h / 2 + 12 / 440 * h + j * (h - 24 / 440 * h) / 5, z + s * .01);   // 선반
+      for (const sx of [-1, 1]) P.상자(손잡이, .02, .2, .02, sx * (fw / 2 - .06), .1, z + s * .02);
+    }
+  },
+  분전반(P, fw, dp, h) {
+    P.상자(받침, fw + .01, .08, dp + .01, 0, -h / 2 + .04, 0);
+    P.상자(틀, fw + .02, .03, dp + .02, 0, h / 2 - .015, 0);                                       // 윗 덮개
+    for (const s of [1, -1]) {
+      const z = s * dp / 2, X = (px) => s * (-fw / 2 + px / 256 * fw), Y = (py) => h / 2 - py / 512 * h;
+      const 창w = fw * (256 - 80) / 256, 창h = h * 150 / 512, cy = Y(135);
+      for (const sy of [-1, 1]) P.상자(틀, 창w + .03, .015, .012, 0, cy + sy * (창h / 2 + .0075), z + s * .006);   // 점검창 테
+      for (const sx of [-1, 1]) P.상자(틀, .015, 창h + .045, .012, sx * (창w / 2 + .0075), cy, z + s * .006);
+      P.상자(손잡이, .025, h * 60 / 512, .025, X(230), Y(.45 * 512 + 30), z + s * .02);                // 손잡이
+      P.원기둥(손잡이, .02, .015, X(230), Y(.45 * 512 - 20), z + s * .008, "z");                        // 열쇠 구멍
+    }
+  },
+  스탠드(P, fw, dp, h) {
+    P.상자(받침, fw + .01, .06, dp + .01, 0, -h / 2 + .03, 0);
+    for (const s of [1, -1]) {
+      const z = s * dp / 2;
+      for (let i = 0; i < 10; i++) P.상자(그릴, fw - .1, .012, .015, 0, -h / 2 + .18 + i * .045, z + s * .007);   // 흡입 그릴
+      for (let i = 0; i < 6; i++) P.상자(그릴, fw - .1, .01, .02, 0, h / 2 - .12 - i * .04, z + s * .01);           // 토출 날개
+      P.상자(화면판, fw * .35, .06, .01, 0, h * .1, z + s * .006);
+    }
+  },
+  출입문(P, fw, dp, h) {
+    for (const sx of [-1, 1]) P.상자(틀, .06, h + .03, dp + .03, sx * (fw / 2 + .02), .015, 0);         // 문틀
+    P.상자(틀, fw + .1, .06, dp + .03, 0, h / 2 + .03, 0);
+    for (const s of [1, -1]) {
+      const z = s * dp / 2, hx = .38 * fw, y = -h / 2 + 1.0;
+      P.원기둥(손잡이, .03, .015, hx, y, z + s * .008, "z");                                             // 장식판
+      P.원기둥(손잡이, .011, .06, hx, y, z + s * .035, "z");                                             // 목
+      P.원기둥(손잡이, .011, .13, hx - .055, y, z + s * .065, "x");                                       // 레버
+      P.상자(손잡이, .03, .12, .006, hx, y - .1, z + s * .004);                                           // 열쇠판
+    }
+  },
+};
+const 부품모양 = {rack: "랙", rack_deep: "랙", rack_net: "랙", crac: "공조", inrow: "공조", ups: "유피에스", battery: "배터리",
+  panel: "분전반", ac_stand: "스탠드", door: "출입문"};
+function 앞이x(it) {                 // 앞·뒤 문이 ±x 면인가 — 세부 그림(기본재질)과 같은 기준
+  if (분류(it) === "랙") return 랙앞x(it);
+  const s = 세부종류[it.종류], 깊은x = it.w > it.d;
+  return s ? (s.축 === "깊이" ? 깊은x : !깊은x) : !깊은x;
+}
+const 부품칸 = new Map();
+function 부품도형(it, h) {
+  const 모양 = 부품모양[it.종류]; if (!모양) return null;
+  const 앞x = 앞이x(it), fw = 앞x ? it.d : it.w, dp = 앞x ? it.w : it.d;
+  const 키 = `${모양}|${fw.toFixed(3)}|${dp.toFixed(3)}|${h.toFixed(3)}|${앞x ? 1 : 0}`;
+  if (부품칸.has(키)) return 부품칸.get(키);
+  const P = 부품모음(); 부품그리기[모양](P, fw, dp, h);
+  const g = 부품합치기(P.조각); if (앞x) { g.rotateY(Math.PI / 2); g.computeBoundingBox(); }
+  g.userData.키 = 키; 부품칸.set(키, g); return g;
+}
+/* 멀면 부품·이름판을 안 그린다 (103차) — 방 전체 보기에서는 손잡이·경첩이 한 점도 안 되는데 랙 수백 대면 삼각형이 열 배가 된다.
+   평면(2D) 편집에서도 안 그린다(위에서 본 손잡이가 자리를 헷갈리게 한다). 걷기·가까이 보기에서는 다 그린다 */
+const 부품거리 = 24;
+function 부품거리맞추기() {
+  const cam = 지금카메라(), 평면 = 편집중 && 편집보기 === "2D", p = cam.position, 한 = 부품거리 * 부품거리;
+  for (const m of 매시들.values()) {
+    const c = m.userData.부품, n = m.userData.이름판; if (!c && !n) continue;
+    const v = !평면 && m.position.distanceToSquared(p) < 한;
+    if (c) c.visible = v; if (n) n.visible = v;
+  }
+}
+function 부품맞추기(m, it, h) {
+  let c = m.userData.부품;
+  const g = 작은센서(it) || 모델쓰나(it) ? null : 부품도형(it, h);
+  if (!g) { if (c) { m.remove(c); m.userData.부품 = null; } return; }
+  if (!c) { c = new THREE.Mesh(g, 부품재질); c.receiveShadow = true; c.userData.부품 = true; m.add(c); m.userData.부품 = c; }
+  else if (c.geometry !== g) c.geometry = g;
+  c.scale.set(1 / m.scale.x, 1 / m.scale.y, 1 / m.scale.z);
+}
+
+/* ── 요철 질감 (103차 ② — 노멀맵) ── 세부 그림의 밝기를 높이로 보고 기울기로 요철 지도를 만든다. 타공 문·그릴·서버 칸이
+   빛을 받아 오목·볼록하게 보인다. 그림마다 한 번만 읽는다(willReadFrequently 캔버스 — 콘솔 경고가 안 나게) */
+const 노멀칸 = new Map();
+function 노멀그림(tex, 세기 = 2.2) {
+  if (!tex) return null; if (노멀칸.has(tex)) return 노멀칸.get(tex);
+  const src = tex.image, w = src.width, h = src.height, c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d", {willReadFrequently: true}); g.drawImage(src, 0, 0);
+  const d = g.getImageData(0, 0, w, h).data, 높 = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) 높[i] = (d[i * 4] * .3 + d[i * 4 + 1] * .59 + d[i * 4 + 2] * .11) / 255;
+  const out = g.createImageData(w, h), o = out.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const L = 높[y * w + Math.max(x - 1, 0)], R = 높[y * w + Math.min(x + 1, w - 1)];
+    const U = 높[Math.max(y - 1, 0) * w + x], D = 높[Math.min(y + 1, h - 1) * w + x];
+    let nx = -(R - L) * 세기, ny = (D - U) * 세기, nz = 1; const k = 1 / Math.hypot(nx, ny, nz);
+    const i = (y * w + x) * 4; o[i] = (nx * k * .5 + .5) * 255; o[i + 1] = (ny * k * .5 + .5) * 255; o[i + 2] = (nz * k * .5 + .5) * 255; o[i + 3] = 255;
+  }
+  g.putImageData(out, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4;
+  노멀칸.set(tex, t); return t;
+}
+
+/* ── 환경 반사 (103차 ②) ── 천장 조명이 있는 회색 방을 따로 그려(PMREM) 금속 판·손잡이·표시창에 비치게 한다.
+   three.js 의 RoomEnvironment 와 같은 생각을 이 파일 안에서 한다 — 폐쇄망 사본(vendor)에 부속 파일을 더 들이지 않으려고 */
+function 환경맞추기() {
+  const pm = new THREE.PMREMGenerator(renderer), s = new THREE.Scene();
+  const 방 = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({color: 0x5d636b, side: THREE.BackSide}));
+  방.scale.set(30, 8, 30); 방.position.y = 3; s.add(방);
+  const 바닥 = new THREE.Mesh(new THREE.BoxGeometry(30, .1, 30), new THREE.MeshBasicMaterial({color: 0x9aa1a9})); 바닥.position.y = -.95; s.add(바닥);
+  const 빛판 = new THREE.MeshBasicMaterial({color: new THREE.Color(1, 1, 1).multiplyScalar(9)});
+  for (const [x, z] of [[-7, -7], [0, -7], [7, -7], [-7, 0], [0, 0], [7, 0], [-7, 7], [0, 7], [7, 7]]) {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(3.6, .1, .9), 빛판); p.position.set(x, 6.9, z); s.add(p);
+  }
+  const 창 = new THREE.Mesh(new THREE.BoxGeometry(.1, 3, 12), new THREE.MeshBasicMaterial({color: new THREE.Color(1, 1, 1).multiplyScalar(3)}));
+  창.position.set(14.9, 3, 0); s.add(창);
+  const rt = pm.fromScene(s, .04); pm.dispose();
+  s.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  환경 = rt.texture; scene.environmentIntensity = .6;
+}
+/* 반사는 화소마다 계산이 많다 — 그래픽 카드 없이 CPU 로 그리는 창(원격 데스크톱·SwiftShader·llvmpipe)에서는 한 장에 몇 초가 걸려
+   처음엔 끈다. 「반사 (고화질)」 체크로 언제든 켜고 끈다 */
+let 환경 = null;
+const 소프트웨어 = (() => {
+  try { const gl = renderer.getContext(), e = gl.getExtension("WEBGL_debug_renderer_info");
+    return /swiftshader|llvmpipe|software|basic render/i.test(e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : ""); } catch { return false; }
+})();
+let 반사 = !소프트웨어;
+function 반사켜기(v) {
+  반사 = !!v; if (반사 && !환경) 환경맞추기();        // 처음 켤 때 만든다 — CPU 로 그리는 창은 시작이 느려지지 않게
+  scene.environment = 반사 ? 환경 : null;
+  const c = document.getElementById("t_hq"); if (c) c.checked = 반사;
+  try { 더러움 = true; } catch { /* 처음 부를 때는 아직 그리기 전이다 */ }
+}
+
+/* ── 3D 모델 (103차 ④ — 무료 라이선스 glTF · 제조사·모델명으로 고르기) ───────────────────────────────
+   room3d_models.json {models: [{종류, 제조사?, 모델?, file, license, author, source}, …]} 에 적은 glb 파일을 설비 모양으로 쓴다.
+   · 고르는 차례 — 설비 속성의 제조사·모델명이 같은 줄(그 실물 모델) → 제조사·모델 없이 종류만 적은 줄(그 종류 기본 모델) → 없으면 부품 모양.
+     같은지는 대소문자·띄어쓰기·하이픈을 빼고 본다(「NetShelter SX」 = 「netshelter-sx」). 사용자 「설비의 속성에 회사와 모델명을 추가하면 거의 실사로」
+   · 라이선스가 허용 목록(CC0·CC-BY·MIT·Apache-2.0·Unlicense·공유 저작물)에 있을 때만 쓴다 — 비영리(NC)·변경 금지(ND)·동일조건(SA)·
+     판매 사이트 표준 라이선스는 이 제품(판매)에 넣을 수 없어 안 쓴다. CC-BY 는 출처를 화면 아래에 적는다
+   · 모델은 설비 크기(w·d·h)에 맞춰 늘인다 — 배치 값이 기준. 모델 앞은 glTF 관례대로 +z, 앞이 ±x 면인 설비는 90° 돌린다
+   · 읽기는 이 파일의 glb 읽개로 한다(외부 GLTFLoader 없이). 묶음 파일(.glb)·압축 없는 것만 — Draco·meshopt·KTX2 압축이나 따로 떨어진 .bin 은 못 읽고 상태에 적는다
+   · 몸체는 남겨 둔다(안 그리고 누르기·칠에만). 고르거나 경보가 나면 몸체에 반투명 색을 씌워 모델 위로 보인다 */
+const 허용라이선스 = new Set(["CC0", "CC0-1.0", "CC-BY-3.0", "CC-BY-4.0", "MIT", "APACHE-2.0", "UNLICENSE", "PUBLIC-DOMAIN", "PDDL-1.0"]);
+function 모델허용(lic) {
+  const k = String(lic || "").trim().toUpperCase().replace(/\s+/g, "-").replace(/^CC-ZERO.*/, "CC0");
+  return 허용라이선스.has(k);
+}
+const 모델이름 = (v) => String(v || "").toLowerCase().replace(/[\s\-_./]+/g, "");
+const 모델들 = [];               // [{종류, 제조사, 모델, 상태: 읽는 중·씀·라이선스 안 맞음·못 읽음 …, 원본: Group, 라이선스, 작성자, 출처, 파일}]
+function 모델고르기(it) {
+  if (!모델들.length || 작은센서(it)) return null;
+  const 회사 = 모델이름(it.제조사), 이름 = 모델이름(it.모델);
+  const 맞음 = (e) => e.종류 === it.종류 || (!e.종류 && (회사 || 이름));
+  return (회사 || 이름 ? 모델들.find(e => 맞음(e) && (e.제조사 || e.모델) && 모델이름(e.제조사) === 회사 && 모델이름(e.모델) === 이름) : null)
+      || 모델들.find(e => e.종류 === it.종류 && !e.제조사 && !e.모델) || null;
+}
+const 쓸모델 = (it) => { const e = 모델고르기(it); return e && e.상태 === "씀" ? e : null; };
+const 모델쓰나 = (it) => !!쓸모델(it);
+const 모델몸체재질 = new THREE.MeshBasicMaterial({visible: false});
+function 모델맞추기(m, it) {
+  let c = m.userData.모델; const e = 쓸모델(it);
+  if (!e) { if (c) { m.remove(c); m.userData.모델 = null; } return; }
+  if (!c || c.userData.원본 !== e.원본) { if (c) m.remove(c); c = e.원본.clone(); c.userData.원본 = e.원본; m.add(c); m.userData.모델 = c; }
+  c.rotation.set(0, 앞이x(it) ? Math.PI / 2 : 0, 0);
+}
+async function glb읽기(buf) {
+  const dv = new DataView(buf);
+  if (buf.byteLength < 20 || dv.getUint32(0, true) !== 0x46546C67) throw new Error("glb 파일이 아닙니다 (.gltf 는 .glb 로 묶어 주세요)");
+  let o = 12, js = null, bin = null;
+  while (o + 8 <= buf.byteLength) {
+    const n = dv.getUint32(o, true), t = dv.getUint32(o + 4, true);
+    if (t === 0x4E4F534A) js = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, o + 8, n)));
+    else if (t === 0x004E4942) bin = buf.slice(o + 8, o + 8 + n);
+    o += 8 + n;
+  }
+  if (!js) throw new Error("glb 안에 JSON 이 없습니다");
+  const 필수 = (js.extensionsRequired || []); if (필수.length) throw new Error("압축·확장이 걸린 모델은 못 읽습니다 — " + 필수.join(", "));
+  const 버퍼 = (js.buffers || []).map((b, i) => { if (i === 0 && !b.uri && bin) return bin; throw new Error("따로 떨어진 .bin 은 못 읽습니다 — .glb 하나로 묶어 주세요"); });
+  const 형 = {5120: Int8Array, 5121: Uint8Array, 5122: Int16Array, 5123: Uint16Array, 5125: Uint32Array, 5126: Float32Array};
+  const 칸수 = {SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16};
+  const 접근 = (ai) => {
+    const a = js.accessors[ai], T = 형[a.componentType], k = 칸수[a.type], 크기 = T.BYTES_PER_ELEMENT;
+    if (a.bufferView === undefined) return {arr: new T(a.count * k), k, norm: !!a.normalized};
+    const bv = js.bufferViews[a.bufferView], off = (bv.byteOffset || 0) + (a.byteOffset || 0), st = bv.byteStride || k * 크기;
+    let arr;
+    if (st === k * 크기) arr = new T(버퍼[bv.buffer].slice(off, off + a.count * k * 크기));
+    else {          // 섞여 담긴(interleaved) 값
+      arr = new T(a.count * k); const src = new Uint8Array(버퍼[bv.buffer]);
+      for (let i = 0; i < a.count; i++) arr.set(new T(src.slice(off + i * st, off + i * st + k * 크기).buffer), i * k);
+    }
+    return {arr, k, norm: !!a.normalized};
+  };
+  const 그림들 = await Promise.all((js.textures || []).map(async (t) => {
+    const im = js.images[t.source]; if (!im || im.bufferView === undefined) return null;
+    const bv = js.bufferViews[im.bufferView], b = 버퍼[bv.buffer].slice(bv.byteOffset || 0, (bv.byteOffset || 0) + bv.byteLength);
+    const bmp = await createImageBitmap(new Blob([b], {type: im.mimeType || "image/png"}));
+    const tex = new THREE.Texture(bmp); tex.flipY = false; tex.needsUpdate = true; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; return tex;
+  }));
+  const 재질들 = (js.materials || []).map((mt) => {
+    const p = mt.pbrMetallicRoughness || {}, c = p.baseColorFactor || [1, 1, 1, 1];
+    const map = p.baseColorTexture ? 그림들[p.baseColorTexture.index] : null; if (map) map.colorSpace = THREE.SRGBColorSpace;
+    const nm = mt.normalTexture ? 그림들[mt.normalTexture.index] : null;
+    return new THREE.MeshStandardMaterial({color: new THREE.Color().setRGB(c[0], c[1], c[2]), opacity: c[3], transparent: mt.alphaMode === "BLEND",
+      alphaTest: mt.alphaMode === "MASK" ? (mt.alphaCutoff ?? .5) : 0, map, normalMap: nm,
+      metalness: p.metallicFactor ?? 1, roughness: p.roughnessFactor ?? 1, side: mt.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+      emissive: new THREE.Color().setRGB(...(mt.emissiveFactor || [0, 0, 0]))});
+  });
+  const 기본 = new THREE.MeshStandardMaterial({color: 0xcccccc, roughness: .6, metalness: .2});
+  const 매시들g = (js.meshes || []).map((ms) => ms.primitives.filter(pr => (pr.mode ?? 4) === 4).map((pr) => {
+    const g = new THREE.BufferGeometry();
+    for (const [이름, 키] of [["POSITION", "position"], ["NORMAL", "normal"], ["TEXCOORD_0", "uv"], ["COLOR_0", "color"]]) {
+      if (pr.attributes[이름] === undefined) continue;
+      const a = 접근(pr.attributes[이름]); g.setAttribute(키, new THREE.BufferAttribute(a.arr, a.k, a.norm));
+    }
+    if (pr.indices !== undefined) g.setIndex(new THREE.BufferAttribute(접근(pr.indices).arr, 1));
+    if (!g.attributes.normal) g.computeVertexNormals();
+    let 재 = pr.material !== undefined ? 재질들[pr.material] : 기본;
+    if (g.attributes.color) { 재 = 재.clone(); 재.vertexColors = true; }
+    const m = new THREE.Mesh(g, 재); m.castShadow = true; m.receiveShadow = true; return m;
+  }));
+  const 노드 = (ni) => {
+    const n = js.nodes[ni], o3 = new THREE.Group();
+    if (n.matrix) o3.applyMatrix4(new THREE.Matrix4().fromArray(n.matrix));
+    else {
+      if (n.translation) o3.position.fromArray(n.translation);
+      if (n.rotation) o3.quaternion.fromArray(n.rotation);
+      if (n.scale) o3.scale.fromArray(n.scale);
+    }
+    if (n.mesh !== undefined) for (const m of 매시들g[n.mesh]) o3.add(m.clone());
+    for (const c of n.children || []) o3.add(노드(c));
+    return o3;
+  };
+  const sc = (js.scenes || [])[js.scene || 0] || {nodes: (js.nodes || []).map((_, i) => i)};
+  const 안 = new THREE.Group(); for (const ni of sc.nodes || []) 안.add(노드(ni));
+  안.updateMatrixWorld(true);
+  const 상 = new THREE.Box3().setFromObject(안); if (상.isEmpty()) throw new Error("모델에 그릴 면이 없습니다");
+  const 크 = 상.getSize(new THREE.Vector3()), 가 = 상.getCenter(new THREE.Vector3());
+  안.position.sub(가);                 // 가운데로
+  const 겉 = new THREE.Group(); 겉.add(안);
+  겉.scale.set(1 / Math.max(크.x, 1e-6), 1 / Math.max(크.y, 1e-6), 1 / Math.max(크.z, 1e-6));     // 1×1×1 — 몸체 배율(w, h, d)이 설비 크기로 늘인다
+  const 끝 = new THREE.Group(); 끝.add(겉); 끝.userData.매시수 = 매시들g.reduce((s, x) => s + x.length, 0);
+  return 끝;
+}
+async function fms파일(path) {           // FMS API 의 파일(바이트) — fms() 는 JSON 만 다룬다
+  if (!FMS.토큰) await 토큰받기();
+  const 한번 = () => fetch(path, {cache: "no-store", headers: {Authorization: "Bearer " + FMS.토큰}});
+  let r = await 한번();
+  if (r.status === 401) { FMS.토큰 = null; await 토큰받기(); r = await 한번(); }
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.arrayBuffer();
+}
+async function 모델들읽기() {
+  let 목록;
+  if (FMS켬) {               // FMS — DB(topo.room3d_model, V056)의 목록, 파일은 /api/room3d/models/{id}/file
+    try { 목록 = ((await fms("/api/room3d/models")).models || []).map(m => ({종류: m.kind, 제조사: m.maker, 모델: m.model, license: m.license,
+      author: m.author, source: m.source_url, file: `/api/room3d/models/${m.id}/file`, id: m.id, 크기: m.size, 서버: true})); }
+    catch { return; }        // 마이그레이션 전(표 없음)·데모 — 모델 없이 (부품 모양)
+  } else {
+    try { const r = await fetch("room3d_models.json", {cache: "no-cache"}); if (!r.ok) return; 목록 = (await r.json()).models || []; }
+    catch { return; }        // 목록이 없으면 모델 없이 (부품 모양)
+  }
+  if (!Array.isArray(목록)) 목록 = Object.entries(목록).map(([종류, e]) => ({종류, ...e}));     // {종류: {…}} 로 적어도 된다
+  const 옛 = 모델들.length;
+  모델들.length = 0;
+  for (const e of 목록) 모델들.push({종류: e.종류 || "", 제조사: e.제조사 || "", 모델: e.모델 || "", 라이선스: e.license || "",
+    작성자: e.author || "", 출처: e.source || "", 파일: e.file || "", id: e.id ?? null, 크기: e.크기 ?? null, 서버: !!e.서버,
+    상태: e.종류 && !장비[e.종류] ? "모르는 종류" : !e.file ? "파일 없음" : 모델허용(e.license) ? "읽는 중" : "라이선스 안 맞음"});
+  await Promise.all(모델들.filter(e => e.상태 === "읽는 중").map(async (e) => {
+    try {
+      let buf;
+      if (e.서버) buf = await fms파일(e.파일);
+      else { const r = await fetch(e.파일, {cache: "no-cache"}); if (!r.ok) throw new Error("HTTP " + r.status); buf = await r.arrayBuffer(); }
+      e.원본 = await glb읽기(buf); e.상태 = "씀";
+    } catch (err) { e.상태 = "못 읽음 — " + err.message; }
+  }));
+  const 이름 = (e) => [e.제조사, e.모델].filter(Boolean).join(" ") || (장비[e.종류] ? 장비[e.종류].이름 : e.종류);
+  const 쓴 = 모델들.filter(e => e.상태 === "씀"), 안쓴 = 모델들.filter(e => e.상태 !== "씀");
+  if (안쓴.length) 상태("3D 모델 안 씀 — " + 안쓴.map(e => `${이름(e)}: ${e.상태}${e.라이선스 ? " (" + e.라이선스 + ")" : ""}`).join(" · "));
+  $("credits").textContent = 쓴.length ? "3D 모델 — " + 쓴.map(e => `${이름(e)}: ${e.작성자 || "작성자 미상"} · ${e.라이선스}`).join(" | ") : "";
+  $("credits").hidden = !쓴.length;
+  if (쓴.length || 옛) { 장면맞추기(); 정보(); }
+}
+
+/* ── 이름판 (103차 — 제조사·모델명) ── 실물 모델이 없는 설비도 앞문 위에 「제조사 모델명」 판을 단다 (앞·뒤). 글자마다 그림 하나 */
+const 이름판칸 = new Map();
+function 이름판재질(글) {
+  if (이름판칸.has(글)) return 이름판칸.get(글);
+  const t = 캔버스(512, 64, (g, W, H) => {
+    g.fillStyle = "#1c2026"; g.fillRect(0, 0, W, H); g.strokeStyle = "#8b939c"; g.lineWidth = 3; g.strokeRect(2, 2, W - 4, H - 4);
+    g.fillStyle = "#e5e7eb"; g.font = "bold 34px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    let 크기 = 34; while (g.measureText(글).width > W - 24 && 크기 > 14) { 크기 -= 2; g.font = `bold ${크기}px sans-serif`; }
+    g.fillText(글, W / 2, H / 2 + 1);
+  });
+  const m = new THREE.MeshStandardMaterial({map: t, roughness: .35, metalness: .4}); 이름판칸.set(글, m); return m;
+}
+const 이름판도형 = new THREE.PlaneGeometry(1, 1);
+function 이름판맞추기(m, it, h) {
+  const 글 = [it.제조사, it.모델].filter(Boolean).join(" ").trim();
+  let c = m.userData.이름판;
+  if (!글 || !부품모양[it.종류] || 모델쓰나(it)) { if (c) { m.remove(c); m.userData.이름판 = null; } return; }
+  if (!c) { c = new THREE.Group(); for (const s of [1, -1]) { const p = new THREE.Mesh(이름판도형, null); p.rotation.y = s > 0 ? 0 : Math.PI; c.add(p); } m.add(c); m.userData.이름판 = c; }
+  const 앞x = 앞이x(it), fw = 앞x ? it.d : it.w, dp = 앞x ? it.w : it.d, 폭 = Math.min(fw * .8, .55), 높 = 폭 / 8;
+  const 재 = 이름판재질(글);
+  c.children.forEach((p, i) => { const s = i ? -1 : 1; p.material = 재; p.scale.set(폭, 높, 1); p.position.set(0, h / 2 - .13 - 높 / 2, s * (dp / 2 + .004)); });
+  c.userData.글 = 글;
+  c.rotation.set(0, 앞x ? Math.PI / 2 : 0, 0);
+  c.scale.set(1 / m.scale.x, 1 / m.scale.y, 1 / m.scale.z);
 }
 
 /* 센서 표 — 작은 센서를 3D 에서도 찾게, 종류 색 동그라미에 종류 모양 아이콘을 그린다.
@@ -851,7 +1269,7 @@ function 센서표재질(종류) {
   if (아이콘[종류]) 아이콘[종류](g);
   else { g.font = `bold ${k.글자.length > 1 ? 40 : 56}px 'Malgun Gothic', sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(k.글자, 64, 68); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  const m = new THREE.SpriteMaterial({map: t, depthTest: false});
+  const m = new THREE.SpriteMaterial({map: t, depthTest: false, toneMapped: false});
   센서표그림.set(종류, m); return m;
 }
 const 숨김재질 = new THREE.MeshBasicMaterial({visible: false});     // 점형 센서 몸체 — 안 그리고 누르기에만
@@ -871,7 +1289,7 @@ function 덧붙이맞추기() {
     g.fillStyle = "#1c2126"; g.font = "bold 36px 'Malgun Gothic', sans-serif";
     g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(e.이름, 64, 34);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({map: t, depthTest: false}));
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({map: t, depthTest: false, toneMapped: false}));
     const 짝 = e.이름.endsWith("2") ? 1 : -1;      // 두 줄짜리 열(B1·B2)은 이름표가 겹치므로 엇갈려 단다
     s.position.copy(V((e.x0 + e.x1) / 2, 짝 < 0 ? e.y0 - 0.5 : e.y1 + 0.5, 2.4));
     s.scale.set(1.1, 0.55, 1); s.renderOrder = 10; s.visible = 층.랙.보임;
@@ -1007,7 +1425,12 @@ function 라이브재질(it) {
    세부 그림 재질을 복제해 색을 곱하고(흰색과 35% 섞어 너무 어둡지 않게) 같은 그림으로 빛을 내 어두운 랙 앞면의 서버 칸·LED 도 보이게 한다.
    (기본 재질 × 칠 색) 마다 하나씩 만들어 둔다. 위험은 깜빡임(라이브깜빡)에 같이 들어간다 */
 const 칠칸 = new Map(), 칠한위험 = new Set();
+const 반투명칠칸 = new Map();
 function 칠한재질(기본, 칠) {
+  if (기본 === 모델몸체재질 && 칠 && 칠.color) {           // 실사 모델 위에 반투명 색 상자 — 모델이 비쳐 보이게 (103차)
+    if (!반투명칠칸.has(칠)) { const c = 칠.clone(); c.transparent = true; c.opacity = .38; c.depthWrite = false; 반투명칠칸.set(칠, c); if (칠 === 상태재질.위험) 칠한위험.add(c); }
+    return 반투명칠칸.get(칠);
+  }
   if (!Array.isArray(기본) || !칠 || !칠.color) return 칠;
   let 칸 = 칠칸.get(기본); if (!칸) { 칸 = new Map(); 칠칸.set(기본, 칸); }
   if (칸.has(칠)) return 칸.get(칠);
@@ -1189,7 +1612,7 @@ function 표맞추기(id, 위치, 줄들, 단, 넓게, 크기) {
   if (s) s.userData.줄 = 줄들;
   if (!s) {
     /* 화면 크기가 늘 같은 표 — 가까이 가도 화면을 덮지 않고, 멀리서도 읽힌다 */
-    s = new THREE.Sprite(new THREE.SpriteMaterial({depthTest: false, sizeAttenuation: false})); s.renderOrder = 20; s.userData.id = id;
+    s = new THREE.Sprite(new THREE.SpriteMaterial({depthTest: false, sizeAttenuation: false, toneMapped: false})); s.renderOrder = 20; s.userData.id = id;
     라이브.덧.add(s); 라이브.표.set(id, s); s.userData.줄 = 줄들;
   }
   const 큰 = s.userData.큰 = {tex: 텍스처(s.userData.큰 && s.userData.큰.tex, c), px: 크기 * c.width / (넓게 ? 340 : 190), 비: c.height / c.width};
@@ -1238,7 +1661,7 @@ function 열판맞추기() {
   if (!라이브.열판) {
     const c = document.createElement("canvas"); c.width = cw; c.height = ch;
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-    라이브.열판 = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({map: t, transparent: true, depthWrite: false}));
+    라이브.열판 = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({map: t, transparent: true, depthWrite: false, toneMapped: false}));
     라이브.열판.rotation.x = -Math.PI / 2; 라이브.열판.renderOrder = 2; 라이브.덧.add(라이브.열판);
   }
   const m = 라이브.열판, c = m.material.map.image, g = c.getContext("2d"), img = g.createImageData(cw, ch);
@@ -1283,19 +1706,19 @@ function 감지선맞추기() {
     if (s.종류 === "s_leak") {            // 점형 누수 감지기 — 새면 그 자리에 빨간 원판이 깜빡인다
       const v = 라이브.값.get(s.id);
       if (v && v.누수) {
-        const 원 = new THREE.Mesh(new THREE.CylinderGeometry(.35, .35, .04, 32), new THREE.MeshBasicMaterial({color: 0xdc2626, transparent: true}));
+        const 원 = new THREE.Mesh(new THREE.CylinderGeometry(.35, .35, .04, 32), new THREE.MeshBasicMaterial({color: 0xdc2626, transparent: true, toneMapped: false}));
         원.position.copy(V(s.x, s.y, .04)); 원.userData.감지선 = true; 원.userData.깜빡 = true; 라이브.덧.add(원);
       }
       continue;
     }
     if (!감지선(s)) continue;
     if (s.데모) {                          // 데모 선은 모형에 없으니 여기서 그린다 (놓은 선은 이미 장면에 있다)
-      const 선 = new THREE.Mesh(new THREE.BoxGeometry(s.w, .02, .06), new THREE.MeshBasicMaterial({color: 0x2563eb}));
+      const 선 = new THREE.Mesh(new THREE.BoxGeometry(s.w, .02, .06), new THREE.MeshBasicMaterial({color: 0x2563eb, toneMapped: false}));
       선.position.copy(V(s.x, s.y, .012)); 선.rotation.y = -라(s.회전 || 0); 선.userData.감지선 = true; 라이브.덧.add(선);
     }
     const v = 라이브.값.get(s.id);
     if (v && v.누수) {
-      const 점 = new THREE.Mesh(new THREE.BoxGeometry(1.2, .08, .3), new THREE.MeshBasicMaterial({color: 0xdc2626, transparent: true}));
+      const 점 = new THREE.Mesh(new THREE.BoxGeometry(1.2, .08, .3), new THREE.MeshBasicMaterial({color: 0xdc2626, transparent: true, toneMapped: false}));
       const [px, py, 각] = 선위치(s, v.위치);
       점.position.copy(V(px, py, .04)); 점.rotation.y = -라(각); 점.userData.감지선 = true; 점.userData.깜빡 = true; 라이브.덧.add(점);
     }
@@ -1711,6 +2134,7 @@ async function FMS시작(sid) {
   $("liveBtn").title = "FMS 에서 받은 실제 값으로 랙·항온항습기·센서 색을 바꿉니다";
   try {
     FMS.현장들 = (await fms("/api/sites")).sites || [];
+    모델들읽기();                                 // 제조사·모델별 실사 모델을 DB 에서 미리 받는다 (103차) — 기다리지 않고 현장부터 연다
     const ops = await fms("/api/settings/ops").catch(() => null);
     const 정 = ops && (ops.items || []).find(x => x.name === "stale_sec"); if (정) FMS.정체 = 정.value;
   } catch (e) { 알림("FMS 현장 목록을 받지 못했습니다", e.message); return; }
@@ -1863,6 +2287,7 @@ function 정보() {
     줄("크기", `${it.w.toFixed(2)} × ${it.d.toFixed(2)} × ${it.h.toFixed(2)} m`);
     if (감지선(it)) 줄("감지선 길이", `${감지선길이(it).toFixed(1)} m${it.종류 === "s_leak_loop" ? " (왼쪽 위 모서리부터 시계 방향)" : it.종류 === "s_leak_path" ? ` (첫 점부터 · 꺾은 점 ${(it.점들 || []).length}개)` : ""}`);
     if (it.회전) 줄("회전", `${it.회전}°`);
+    if (it.제조사 || it.모델) 줄("제조사·모델", [it.제조사, it.모델].filter(Boolean).join(" ") + (모델쓰나(it) ? " (실사 모델)" : ""));
     if (it.점) 줄("센서 코드", it.점);
     if (it.메모) 줄("메모", it.메모);
     for (const [k, v, 단] of 라이브줄(it)) 줄(k, 엘("b", {style: `color:${상태색[단] || "inherit"}`, textContent: v}));
@@ -2072,6 +2497,7 @@ function 층보임(키, v) {
   for (const it of 모형.항목) if (분류(it) === 키) 매시맞추기(it);
   덧붙이맞추기(); 칠하기(); 층체크그리기(); if (편집중) { 레이어그리기(); 고름바뀜(); }
 }
+$("t_hq").addEventListener("change", e => 반사켜기(e.target.checked));
 $("t_wallhi").addEventListener("change", e => {
   벽자름 = !e.target.checked;
   for (const it of 모형.항목) if (it.종류 === "wall") 매시맞추기(it);
@@ -2528,6 +2954,65 @@ function 열기창() {
       엘("button", {textContent: "닫기", onclick: () => 창.닫기()})));
 }
 
+/* 3D 모델 창 (103차 — 「모델별 실사자료는 db에 미리 저장」) — DB 의 모델 목록·올리기·지우기. FMS 안에서만(서버 DB).
+   올리는 칸은 고른 설비의 종류·제조사·모델명으로 미리 채운다. 라이선스는 무료로 팔 수 있는 것만 고를 수 있다(서버·DB 도 다시 막는다) */
+async function 모델창() {
+  if (!FMS켬) {
+    const 창 = 대화("3D 모델 (실사 자료)",
+      엘("p", {class: "설명", textContent: "3D 모델은 FMS 서버 DB 에 저장합니다. FMS 화면의 「3D 상면」 메뉴에서 열어 주세요. "
+        + "이 화면만 따로 열었을 때는 같은 폴더의 room3d_models.json 목록을 씁니다."}),
+      엘("div", {class: "단추들"}, 엘("button", {textContent: "닫기", onclick: () => 창.닫기()})));
+    return;
+  }
+  const 쓸수 = !!(FMS.권한 && FMS.권한["topo.edit"]);
+  let 목록 = [];
+  try { 목록 = (await fms("/api/room3d/models")).models || []; } catch (e) { 알림("3D 모델 목록을 받지 못했습니다", e.message); return; }
+  const 하나 = 고른항목().length === 1 ? 고른항목()[0] : null;
+  const 종류칸 = 엘("select", {}, ...Object.entries(장비).filter(([, k]) => 제조사칸(k)).map(([키, k]) => 엘("option", {value: 키, textContent: `${k.이름} (${키})`})));
+  if (하나 && 제조사칸(장비[하나.종류])) 종류칸.value = 하나.종류;
+  const 회사칸 = 엘("input", {value: 하나 ? 하나.제조사 || "" : "", placeholder: "비우면 이 종류의 기본 모델"});
+  const 모델칸 = 엘("input", {value: 하나 ? 하나.모델 || "" : "", placeholder: "예) VR3100"});
+  const 라칸 = 엘("select", {}, ...["CC0-1.0", "CC-BY-4.0", "CC-BY-3.0", "MIT", "Apache-2.0", "Unlicense", "Public-Domain", "PDDL-1.0"].map(v => 엘("option", {value: v, textContent: v})));
+  const 작성칸 = 엘("input", {placeholder: "CC-BY 는 화면 아래에 적습니다"}), 출처칸 = 엘("input", {placeholder: "받은 곳 주소 (참고용)"});
+  const 파일칸 = 엘("input", {type: "file", accept: ".glb,model/gltf-binary"});
+  const 줄 = (m) => {
+    const e = 모델들.find(x => x.id === m.id);
+    return 엘("tr", {},
+      엘("td", {textContent: 장비[m.kind] ? 장비[m.kind].이름 : m.kind}), 엘("td", {textContent: m.maker || "(기본)"}), 엘("td", {textContent: m.model || "—"}),
+      엘("td", {textContent: m.license}), 엘("td", {textContent: (m.size / 1024 / 1024).toFixed(1) + " MB"}),
+      엘("td", {textContent: e ? e.상태 : "—"}),
+      엘("td", {}, 엘("button", {textContent: "지우기", disabled: !쓸수, onclick: async () => {
+        if (!confirm(`${m.maker || ""} ${m.model || ""} (${m.kind}) 모델을 DB 에서 지울까요?`)) return;
+        try { await fms(`/api/room3d/models/${m.id}`, {method: "DELETE"}); 창.닫기(); await 모델들읽기(); 모델창(); }
+        catch (err) { 알림("지우지 못했습니다", err.message); } }})));
+  };
+  const 올리기 = async () => {
+    const f = 파일칸.files[0]; if (!f) { 상태("올릴 .glb 파일을 고르세요"); return; }
+    const q = new URLSearchParams({kind: 종류칸.value, maker: 회사칸.value.trim(), model: 모델칸.value.trim(), license: 라칸.value,
+      author: 작성칸.value.trim(), source: 출처칸.value.trim(), name: f.name});
+    const 보내기 = () => fetch("/api/room3d/models?" + q, {method: "POST", body: f,
+      headers: {Authorization: "Bearer " + FMS.토큰, "Content-Type": "model/gltf-binary"}});
+    try {
+      if (!FMS.토큰) await 토큰받기();
+      let r = await 보내기(); if (r.status === 401) { FMS.토큰 = null; await 토큰받기(); r = await 보내기(); }
+      const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.message || "HTTP " + r.status);
+      창.닫기(); await 모델들읽기(); 상태(`3D 모델을 DB 에 저장했습니다 — ${b.maker || ""} ${b.model || ""} (${b.kind})`); 모델창();
+    } catch (err) { 알림("3D 모델을 올리지 못했습니다", err.message); }
+  };
+  const 창 = 대화("3D 모델 (제조사·모델별 실사 자료)",
+    엘("p", {class: "설명", textContent: "설비 속성의 종류·제조사·모델명이 같은 모델로 그립니다. 제조사·모델 없이 올리면 그 종류의 기본 모델입니다. "
+      + "무료로 팔 수 있는 라이선스(CC0·CC-BY·MIT 등)만 받습니다 — 비영리(NC)·변경 금지(ND)·동일조건(SA)은 안 됩니다. "
+      + "압축 없는 .glb 하나, 15 MB 이하. 모델 앞은 +Z, 크기는 설비 크기에 맞춰 늘입니다."}),
+    목록.length ? 엘("table", {class: "모델표"}, 엘("tr", {}, ...["종류", "제조사", "모델명", "라이선스", "크기", "화면", ""].map(t => 엘("th", {textContent: t}))), ...목록.map(줄))
+      : 엘("div", {class: "빈", textContent: "DB 에 저장한 3D 모델이 아직 없습니다."}),
+    엘("div", {class: "묶음이름", textContent: 쓸수 ? "새 모델 올리기" : "올리기·지우기는 배치 편집 권한(topo.edit)이 있는 분만 할 수 있습니다"}),
+    엘("div", {class: "속"}, 엘("label", {textContent: "파일 (.glb)"}), 파일칸, 엘("label", {textContent: "종류"}), 종류칸,
+      엘("label", {textContent: "제조사"}), 회사칸, 엘("label", {textContent: "모델명"}), 모델칸, 엘("label", {textContent: "라이선스"}), 라칸,
+      엘("label", {textContent: "작성자"}), 작성칸, 엘("label", {textContent: "출처"}), 출처칸),
+    엘("div", {class: "단추들"}, 엘("button", {textContent: "닫기", onclick: () => 창.닫기()}),
+      엘("button", {class: "주", textContent: "DB 에 올리기", disabled: !쓸수, onclick: 올리기})));
+}
+
 /* ── 메뉴 ── */
 const 메뉴판 = [
   ["파일", [
@@ -2539,6 +3024,8 @@ const 메뉴판 = [
     ["다른 이름으로 저장…", 다른이름으로저장, "Ctrl+Shift+S"],
     "-",
     ["JSON 파일로 내보내기 (내려받기)", () => 내려받기()],
+    "-",
+    ["3D 모델 (제조사·모델별 실사 자료)…", 모델창],
     ["처음 도면으로 되돌리기", () => { if (confirm("처음 도면(평면도에서 뽑은 좌표)으로 되돌릴까요? 저장한 배치는 그대로 남습니다.")) 처음도면으로(); }],
   ]],
   ["편집", [
@@ -2688,7 +3175,9 @@ function 속성그리기() {
       엘("div", {class: "속"},
         ...칸("높이 (m)", "", v => 모두바꾸기("h", v), {type: "number", step: .01}),
         ...칸("바닥에서 (m)", "", v => 모두바꾸기("z0", v), {type: "number", step: .01}),
-        ...(목록.every(it => 분류(it) === "랙") ? 칸("열", "", v => 모두바꾸기("열", v)) : [])));
+        ...(목록.every(it => 분류(it) === "랙") ? 칸("열", "", v => 모두바꾸기("열", v)) : []),
+        ...(목록.every(it => 제조사칸(장비[it.종류])) ? [...칸("제조사", 같은값(목록, "제조사"), v => 모두바꾸기("제조사", v)),
+          ...칸("모델명", 같은값(목록, "모델"), v => 모두바꾸기("모델", v))] : [])));
     return;
   }
   const it = 목록[0], k = 장비[it.종류];
@@ -2698,10 +3187,13 @@ function 속성그리기() {
     ...칸("종류", k.이름, null),
     ...칸("레이어", k.분류, null),
     ...(k.분류 === "랙" ? 칸("열", it.열, v => 하나바꾸기(it, "열", v)) : []),
+    ...(제조사칸(k) ? [...칸("제조사", it.제조사, v => 하나바꾸기(it, "제조사", v)), ...칸("모델명", it.모델, v => 하나바꾸기(it, "모델", v))] : []),
     ...((c) => { if (FMS켬) c[1].setAttribute("list", "fmsTags"); return c; })(칸("FMS 센서 코드", it.점, v => 하나바꾸기(it, "점", v))),
     ...칸("메모", it.메모, v => 하나바꾸기(it, "메모", v), {여러줄: true})),
-    엘("div", {class: "묶음이름", textContent: "FMS 센서 코드를 적어 두면 나중에 실시간 값·알람 색을 이 장비에 붙입니다."}));
+    엘("div", {class: "묶음이름", textContent: "FMS 센서 코드를 적어 두면 나중에 실시간 값·알람 색을 이 장비에 붙입니다."
+      + (제조사칸(k) ? " 제조사·모델명이 같은 3D 모델(파일 → 3D 모델)이 있으면 그 실물 모양으로 그립니다." : "")}));
 }
+const 제조사칸 = (k) => !["바닥", "건축"].includes(k.분류) || k === 장비.door;      // 벽·기둥·바닥 말고 (출입문은 둔다)
 function 방바꾸기(키, v) {
   v = +v; if (!(v > 0.5)) { 상태("0.5 m 보다 커야 합니다"); 속성그리기(); return; }
   방()[키] = v; 미니크기(); 게이지범위(); 빛맞추기(); 기록("방 크기"); 더러움 = true;
@@ -2717,10 +3209,17 @@ function 하나바꾸기(it, 키, v) {
     고른.delete(옛); 고른.add(v); 색인(); 매시맞추기(it);
   } else if (v) it[키] = v; else delete it[키];
   if (키 === "열") 덧붙이맞추기();
+  if (키 === "제조사" || 키 === "모델") { 매시맞추기(it); 칠하기(); 정보(); }      // 실사 모델·이름판을 바로 바꿔 단다 (103차)
   기록("속성 바꾸기");
 }
+const 같은값 = (목록, 키) => 목록.every(it => (it[키] || "") === (목록[0][키] || "")) ? 목록[0][키] || "" : "";
 function 모두바꾸기(키, v) {
-  const 목록 = 고른항목(); if (v === "") return;
+  const 목록 = 고른항목();
+  if (키 === "제조사" || 키 === "모델") {         // 글자 — 비우면 지운다 (103차)
+    for (const it of 목록) { if (v.trim()) it[키] = v.trim(); else delete it[키]; }
+    바꾼것맞추기(목록); 칠하기(); 기록("속성 바꾸기"); return;
+  }
+  if (v === "") return;
   for (const it of 목록) it[키] = 키 === "열" ? v.trim() : Math.max(키 === "h" ? .005 : -5, +v);
   바꾼것맞추기(목록); 덧붙이맞추기(); 기록("속성 바꾸기");
 }
@@ -3434,7 +3933,9 @@ $("layoutSel").addEventListener("change", e => {
   if (n) 보관에서열기(n); else { 처음도면으로(); 지금이름쓰기(null); 저장됨 = true; 출처표시(); }
   층체크그리기(); 고르기([]); 정보(); 시점들.iso();
 });
+반사켜기(반사);                                   // 금속 판·손잡이에 비치는 방 (103차 ②) — CPU 로 그리는 창은 처음엔 끔
 장면맞추기();
+if (!FMS켬) 모델들읽기();                         // 따로 연 화면은 room3d_models.json, FMS 안에서는 DB(FMS시작에서) — 103차 ④
 controls.target.copy(가운데());
 camera.position.copy(가운데()).add(방향(0.16, 0.72).multiplyScalar(맞춤거리(전체반지름())));
 controls.update();
@@ -3748,7 +4249,7 @@ function 설비이름맞추기(now) {
   이름표들 = 고른것.map(x => x.it.id); 이름표자리 = 칸들;
   고른것.forEach(({위, 판}, i) => {
     let s = 이름표판[i];
-    if (!s) { s = new THREE.Sprite(new THREE.SpriteMaterial({depthTest: false, sizeAttenuation: false})); s.renderOrder = 16; scene.add(s); 이름표판[i] = s; }
+    if (!s) { s = new THREE.Sprite(new THREE.SpriteMaterial({depthTest: false, sizeAttenuation: false, toneMapped: false})); s.renderOrder = 16; scene.add(s); 이름표판[i] = s; }
     if (s.material.map !== 판.tex) { s.material.map = 판.tex; s.material.needsUpdate = true; }
     s.scale.set(판.px * 단위, 판.px * 단위 * 판.비, 1);
     s.position.copy(위); s.visible = true;
@@ -3769,6 +4270,7 @@ function 돌기(now) {
   if (라이브.켬 && !편집중) { 라이브깜빡(now); 더러움 = true; }
   if (날았나 || 움직였나 || 더러움 || 걸었나 || renderer.xr.isPresenting || 걷기.녹화) {
     해.castShadow = !(편집중 && 편집보기 === "2D");      // 평면에서는 그림자가 자리를 헷갈리게 한다
+    부품거리맞추기();
     renderer.render(scene, 지금카메라());
     if (!편집중) { 미니맵(); 게이지맞추기(); } else if (편집보기 === "3D") 상태줄();
     더러움 = false;
@@ -3802,7 +4304,39 @@ window.__room3d = {덮어쓰기: (o) => { 라이브.덮어쓰기 = o || {}; },
   표화면: (id) => { const s = 센서표.get(id); const p = s.position.clone().project(지금카메라());
     const r = stage.getBoundingClientRect(); return {x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height}; },
   화면: (id) => { const it = 찾기id.get(id); const p = V(it.x, it.y, (it.z0 || 0) + 보이는높이(it)).project(지금카메라());
-    const r = stage.getBoundingClientRect(); return {x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height}; }};
+    const r = stage.getBoundingClientRect(); return {x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height}; },
+  /* 103차 설비 모양 시험 — 부품·이름판·모델·색 보정 */
+  렌더정보: () => ({톤: renderer.toneMapping === THREE.NeutralToneMapping ? "Neutral" : String(renderer.toneMapping), 환경: !!scene.environment, 소프트웨어,
+    노멀: !!세부재질("rack", true)[0].normalMap}),
+  부품: (id) => {
+    const m = 매시들.get(id), c = m && m.userData.부품; if (!c) return null;
+    m.updateMatrixWorld(true);
+    const 몸 = new THREE.Box3().setFromObject(new THREE.Mesh(도형.상자)).applyMatrix4(m.matrixWorld), 붙 = new THREE.Box3().setFromObject(c);
+    const it = 찾기id.get(id), 앞x = 앞이x(it), 손 = c.geometry.groups.find(g => g.materialIndex === 손잡이);
+    let 손잡이결과 = null;
+    if (손) {        // 손잡이 묶음의 몸체 기준 밖으로 나온 정도 — 앞뒤(앞 축)와 옆
+      const p = c.geometry.attributes.position, hx = (앞x ? it.w : it.d) / 2, hs = (앞x ? it.d : it.w) / 2; let 앞뒤 = 0, 옆 = 0;
+      for (let i = 손.start; i < 손.start + 손.count; i++) { const a = 앞x ? Math.abs(p.getX(i)) : Math.abs(p.getZ(i)), b = 앞x ? Math.abs(p.getZ(i)) : Math.abs(p.getX(i));
+        앞뒤 = Math.max(앞뒤, a - hx); 옆 = Math.max(옆, b - hs); }
+      손잡이결과 = {앞뒤: +앞뒤.toFixed(4), 옆: +옆.toFixed(4)};
+    }
+    const 판 = (b) => ({min: [b.min.x, b.min.z, b.min.y].map(v => +v.toFixed(4)), max: [b.max.x, b.max.z, b.max.y].map(v => +v.toFixed(4))});
+    return {조각: c.geometry.userData.조각, 재질: c.geometry.groups.length, 몸: 판(몸), 부품: 판(붙), 회전: it.회전 || 0, 손잡이: 손잡이결과};
+  },
+  부품광선: (id) => { const it = 찾기id.get(id), m = 매시들.get(id); m.updateMatrixWorld(true);
+    const 앞x = 앞이x(it), 끝 = new THREE.Vector3(앞x ? .5 : 0, .1, 앞x ? 0 : .5).applyMatrix4(m.matrixWorld);      // 앞문 손잡이 쪽 점을 겨눈다
+    const 눈 = 끝.clone().add(new THREE.Vector3(앞x ? 1 : 0, .3, 앞x ? 0 : 1).applyQuaternion(m.quaternion).multiplyScalar(3));
+    광선.set(눈, 끝.clone().sub(눈).normalize());
+    const 대상 = [...매시들.values()].filter(x => x.visible), h = 광선.intersectObjects(대상, false)[0]; return h ? h.object.userData.id : null; },
+  보이기: (키, v) => 층보임(키, v),
+  부품보임: (id) => { const m = 매시들.get(id), c = m && m.userData.부품; if (!c) return null; let v = true; c.traverseAncestors(o => { if (!o.visible) v = false; }); return v && c.visible; },
+  모델정보: (k) => { const e = 모델들.find(x => x.종류 === k); return e ? {상태: e.상태, 라이선스: e.라이선스, 제조사: e.제조사, 모델: e.모델} : null; },
+  모델붙음: (id) => { const m = 매시들.get(id), c = m && m.userData.모델; if (!c) return null; m.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(c), z = b.getSize(new THREE.Vector3()); let n = 0; c.traverse(o => { if (o.isMesh) n++; });
+    return {매시: n, 크기: [z.x, z.z, z.y].map(v => +v.toFixed(3))}; },
+  모델다시읽기: () => 모델들읽기(), 모델창,
+  모델허용, 가까이: (id) => { 고르기([id]); 가까이([id]); }, 고르기: (ids) => 고르기(ids),
+  이름판: (id) => { const m = 매시들.get(id), c = m && m.userData.이름판; return c ? c.userData.글 : null; }};
 </script>
 </body>
 </html>
