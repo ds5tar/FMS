@@ -739,6 +739,7 @@ const 고름재질 = new THREE.MeshStandardMaterial({color: 0xd97706, roughness:
 const 위재질 = new THREE.MeshStandardMaterial({color: 0xf59e0b, roughness: .7});
 
 let 벽자름 = true;
+const 벽낮은높이 = 0.5;      // 「벽을 전체 높이로」 를 끈 기본 보기에서 벽 높이 (98차 사용자 「벽의 높이를 기본적으로 0.5 m 로」 — 전에는 1.2 m). 배치 값(h)은 그대로
 const 매시들 = new Map();
 /* 점형 센서(온도·습도·온습도·누수 점형·연기·문 …)는 실물(수 cm)대로 그리면 방 전체 보기에서 점이다.
    화면에서만 두 배, 바닥 면은 적어도 12 cm 로 그린다 — 배치 값(w·d·h)과 2D 평면은 그대로 (83차 「센서의 크기를 2배로」).
@@ -748,7 +749,7 @@ const 작은센서 = (it) => 분류(it) === "센서" && !감지선(it);
 function 보이는높이(it) {
   if (감지선(it)) return Math.max(it.h, .03);     // 바닥에 묻히지 않게 3 cm
   if (작은센서(it)) return it.h * 센서배;
-  return it.종류 === "wall" && 벽자름 ? Math.min(it.h, 1.2) : it.h;
+  return it.종류 === "wall" && 벽자름 ? Math.min(it.h, 벽낮은높이) : it.h;
 }
 const 보이는폭 = (it, v) => 작은센서(it) ? Math.max(v * 센서배, 센서최소) : v;
 function 매시맞추기(it) {
