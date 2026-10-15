@@ -186,16 +186,21 @@ try:
         pg.click("#v_iso"); 다옴()
 
         # ── 98차 — 벽은 기본 0.5 m 높이로 보인다(「벽을 전체 높이로」 를 켜면 3.6 m, 끄면 다시 0.5 m). 배치 값(h)은 그대로 ──
-        # ── 99차 — 기둥도 기본 1 m 높이로 보인다(같은 체크로 전체 높이) ──
-        for 종류, 낮은 in (("wall", .5), ("col", 1.0)):
-            벽id = pg.evaluate("k => window.__room3d.모형().항목.find(i => i.종류 === k).id", 종류)
-            벽높이 = lambda: pg.evaluate("id => window.__room3d.그린크기(id)[2]", 벽id)
-            h0 = 벽높이()
-            pg.evaluate("const c = document.getElementById('t_wallhi'); c.checked = true; c.dispatchEvent(new Event('change'))"); h1 = 벽높이()
-            pg.evaluate("const c = document.getElementById('t_wallhi'); c.checked = false; c.dispatchEvent(new Event('change'))"); h2 = 벽높이()
-            원높이 = pg.evaluate("id => window.__room3d.모형().항목.find(i => i.id === id).h", 벽id)
-            확인(abs(h0 - 낮은) < 1e-6 and abs(h1 - 원높이) < 1e-6 and abs(h2 - 낮은) < 1e-6 and 원높이 > 1,
-                 f"{'벽' if 종류 == 'wall' else '기둥'} 기본 높이 {낮은} m ({벽id} 처음 {h0} · 전체 높이 {h1} · 다시 {h2} · 배치 값 {원높이})")
+        벽id = pg.evaluate("window.__room3d.모형().항목.find(i => i.종류 === 'wall').id")
+        벽높이 = lambda: pg.evaluate("id => window.__room3d.그린크기(id)[2]", 벽id)
+        def 전체높이(켬):
+            pg.evaluate("v => { const c = document.getElementById('t_wallhi'); c.checked = v; c.dispatchEvent(new Event('change')); }", 켬)
+        h0 = 벽높이(); 전체높이(True); h1 = 벽높이(); 전체높이(False); h2 = 벽높이()
+        원높이 = pg.evaluate("id => window.__room3d.모형().항목.find(i => i.id === id).h", 벽id)
+        확인(abs(h0 - .5) < 1e-6 and abs(h1 - 원높이) < 1e-6 and abs(h2 - .5) < 1e-6 and 원높이 > 1,
+             f"벽 기본 높이 0.5 m ({벽id} 처음 {h0} · 전체 높이 {h1} · 다시 {h2} · 배치 값 {원높이})")
+        # ── 100차 — 기둥은 배치 값 자체가 1 m 다(옛 기본값 3.6 m 는 열 때 1 m). 보기 높이 = 배치 값, 체크와 상관없다 ──
+        기둥 = pg.evaluate("window.__room3d.모형().항목.filter(i => i.종류 === 'col').map(i => [i.id, i.h])")
+        기둥보임 = lambda: [pg.evaluate("id => window.__room3d.그린크기(id)[2]", i) for i, _ in 기둥]
+        g0 = 기둥보임(); 전체높이(True); g1 = 기둥보임(); 전체높이(False)
+        확인(len(기둥) >= 5 and all(abs(h - 1) < 1e-6 for _, h in 기둥) and all(abs(v - 1) < 1e-6 for v in g0 + g1),
+             f"기둥 배치 높이 1 m · 보기도 1 m ({len(기둥)}개, 배치 값 {sorted({h for _, h in 기둥})}, 보기 {sorted(set(g0 + g1))})")
+        확인("기둥" not in pg.inner_text("label:has(#t_wallhi)"), "체크 이름은 「벽을 전체 높이로」 — 기둥은 늘 배치 높이")
 
         # ── 편집기 ──
         pg.click("#toEdit"); pg.wait_for_timeout(1200)
@@ -537,6 +542,21 @@ try:
         확인(개수() == 10 and "작은배치" in pg.inner_text("#docName"), f"JSON 파일 열기 — {개수()}개, 이름 작은배치")
         pg.keyboard.press("Control+z"); pg.wait_for_timeout(200)
         확인(개수() > 600, "파일 열기도 실행 취소됨")
+        # 100차 — 저장해 둔 배치의 기둥 3.6 m(옛 기본값)는 열 때 1 m. 사람이 고친 높이(2 m)는 그대로. 새로 놓는 기둥도 1 m
+        기둥판 = {"판": 2, "방": 내려["방"], "항목": [
+            {"id": "C91", "종류": "col", "이름": "기둥", "x": 3, "y": 3, "w": 1, "d": 1, "h": 3.6, "z0": 0, "회전": 0},
+            {"id": "C92", "종류": "col", "이름": "기둥", "x": 6, "y": 3, "w": 1, "d": 1, "h": 2.0, "z0": 0, "회전": 0}]}
+        json.dump(기둥판, open(f"{OUT}/기둥배치.json", "w", encoding="utf-8"), ensure_ascii=False)
+        pg.set_input_files("#fileIn", f"{OUT}/기둥배치.json"); pg.wait_for_timeout(400)
+        높이들 = lambda: dict(pg.evaluate("window.__room3d.모형().항목.filter(i => i.종류 === 'col').map(i => [i.id, i.h])"))
+        확인(높이들() == {"C91": 1.0, "C92": 2.0}, f"저장된 기둥 3.6 m → 1 m, 고친 2 m 는 그대로 — {높이들()}")
+        확인(abs(pg.evaluate("window.__room3d.그린크기('C92')[2]") - 2.0) < 1e-6, "기둥 보기 높이 = 배치 값 (2 m 기둥을 1 m 로 자르지 않음)")
+        pg.locator("#lib .타일[data-k=col]").click()
+        pg.mouse.click(*평(10.0, 10.0)); pg.wait_for_timeout(300)
+        새기둥 = {k: v for k, v in 높이들().items() if k not in ("C91", "C92")}
+        확인(len(새기둥) == 1 and abs(list(새기둥.values())[0] - 1) < 1e-6, f"새로 놓는 기둥 높이 1 m — {새기둥}")
+        pg.keyboard.press("Control+z"); pg.wait_for_timeout(200); pg.keyboard.press("Control+z"); pg.wait_for_timeout(200)
+        확인(개수() > 600, "기둥 시험 실행 취소")
         pg.evaluate("localStorage.clear()")
         확인(not 오류, f"콘솔 오류·경고 {len(오류)}건 {오류[:3]}")
         b.close()
