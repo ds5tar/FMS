@@ -1582,6 +1582,11 @@ function 점값글(x) {
   if (종 === "온도") return 소수(값) + " ℃";
   if (종 === "습도") return 소수(값, 0) + " %";
   if (종 === "위치") return 소수(값) + " m";
+  /* 시각 값 (91차 「마지막열림시각이 너무 많은 숫자가 나온다」) — 클라이브 도어처럼 epoch 초를 값으로 보내는 센서는 「시:분:초」 로 */
+  if (값 >= 1e9 && 값 < 1e10 && (/^(time|timestamp|epoch|unixtime)$/i.test(String(p.unit || "").trim()) || (!p.unit && /시각/.test(p.name || "")))) {
+    const d = new Date(값 * 1000), z = (n) => String(n).padStart(2, "0");
+    return `${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+  }
   return (Math.abs(값) >= 100 ? 소수(값, 0) : 소수(값, Math.abs(값) < 10 ? 2 : 1)) + (p.unit ? " " + p.unit : "");
 }
 /* 항목 하나의 값 — 붙은 센서 전부를 모아 한 단계로 */

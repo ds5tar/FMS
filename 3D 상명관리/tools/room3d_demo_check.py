@@ -72,6 +72,21 @@ with sync_playwright() as p:
              f"알람의 「3D」 — 서울로 돌아와 {짝[1]} 고름 ({fr.evaluate('window.__room3d.고른()')})")
         pg.wait_for_timeout(1500); pg.screenshot(path=f"{OUT}/d3_데모_3D로가기.png")
 
+    # 93차 — 장애 내역 팝업의 센서 칸을 누르면 3D 상면의 그 센서로 (「CRAC-05 펌프1」 = 서울 배치 CRAC-05)
+    fr.select_option("#layoutSel", 부산[0]); 기다리기(fr, "window.__room3d.FMS().현장 === 'BUSAN'")
+    pg.evaluate("setMode('dash')"); pg.wait_for_timeout(500)
+    pg.evaluate("showKpiDetail('sensor', '이상이 있는 센서')")
+    pg.wait_for_selector("#modal td.go3d", timeout=10000)
+    칸 = pg.locator("#modal td.go3d", has_text="CRAC-05 펌프1").first
+    확인(칸.count() == 1, "장애 내역 팝업 — 센서 칸이 누를 수 있음")
+    pg.screenshot(path=f"{OUT}/d4_장애내역_센서칸.png")
+    칸.click()
+    확인(기다리기(fr, "window.__room3d.FMS().현장 === 'SEOUL' && window.__room3d.고른().some(id => (window.__room3d.모형().항목.find(i => i.id === id) || {}).점 === 'CRAC-05')"),
+         f"센서 칸 → 3D 서울센터 CRAC-05 고름 ({fr.evaluate('window.__room3d.고른()')})")
+    확인(pg.evaluate("document.getElementById('modal').classList.contains('hide') || !document.querySelector('#modal td.go3d')"),
+         "팝업은 닫힘")
+    pg.wait_for_timeout(1500); pg.screenshot(path=f"{OUT}/d5_장애내역_3D.png")
+
     # 저장 — 이 창 안의 가짜 API 에 남고, 다시 열면 「서버」 배치
     r = pg.evaluate("""fetch('/api/sites/1/room-layout').then(r => r.json()).then(b => b.layout)""")
     확인(r is None, "처음엔 저장된 배치 없음 (기본 배치로 열림)")
