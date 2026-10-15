@@ -1556,7 +1556,7 @@ if (FMS켬) {
     if (m.fms3d === "init") {
       FMS.토큰 = m.token; FMS.권한 = m.permissions || {}; FMS.사용자 = m.user || "";
       const w = FMS.기다림; FMS.기다림 = []; w.forEach(f => f());
-      if (!FMS.시작됨) FMS시작(m.site_id);
+      if (!FMS.시작됨) FMS.준비 = FMS시작(m.site_id);
     } else if (m.fms3d === "focus") FMS로가기(m.site_id, m.point_id);
   });
 }
@@ -1742,6 +1742,9 @@ async function 현장열기(sid) {
 /* 알람·배치도의 「3D」 — 그 현장으로 가서 그 센서가 붙은 항목을 보여 준다 */
 async function FMS로가기(sid, pid) {
   if (!FMS.시작됨) return;
+  /* 3D 를 처음 열면서 오면 현장 목록·배치·센서를 다 읽은 뒤에 간다 (96차). 전에는 읽는 중에 와서
+     현장 목록이 비어 「그 센서로 가기」 가 버려졌다 — 3D 화면만 뜨고 시선은 그대로 */
+  await FMS.준비;
   if (sid != null && (!FMS.현장 || FMS.현장.id !== sid)) await 현장열기(sid);
   if (pid == null) return;
   if (편집중) 모드(false);
