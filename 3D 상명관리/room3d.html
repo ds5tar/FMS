@@ -428,6 +428,20 @@ try {
 /* FMS 연결 — 관제 화면(index.html)의 「3D 상면」 메뉴가 이 화면을 iframe 으로 띄운다 (71차). 그때는 현장 배치를 서버에서 읽고 쓰며
    실시간 값을 FMS 에서 받는다. 토큰은 주소가 아니라 postMessage 로 받아 변수에만 둔다 (아래 「FMS 연결」) */
 /* demo.html(파일 하나 데모)은 이 문서를 srcdoc 으로 싣고 FMS데모 = true 를 먼저 둔다 — 주소에 ?fms=1 을 못 붙여서 (90차) */
+/* ── 시각 (106차 사용자 「모든 시각은 통일성있게 서버시각으로한다 한국시각에 따른다」) ──
+   관제 화면(index.html)과 같다 — 서버가 응답마다 싣는 X-FMS-Now 로 서버 시계를 따르고, 시간대는 늘 KST(UTC+9).
+   PC 시간대(getHours 류)는 쓰지 않는다. 파일로 연 데모는 서버가 없어 PC 시계 · KST */
+const 시계 = {차: 0};
+const 지금ms = () => Date.now() + 시계.차;
+function 서버시계(r, 보낸) {
+  const v = Number(r && r.headers && r.headers.get("X-FMS-Now")), 받은 = Date.now();
+  if (v > 1e9 && 받은 - 보낸 <= 3000) 시계.차 = v * 1000 - (보낸 + 받은) / 2;
+}
+function KST(초) {                      // epoch 초(없으면 지금) → KST 연·월·일·시·분·초
+  const d = new Date((초 == null ? 지금ms() : 초 * 1000) + 9 * 3600 * 1000);
+  return {y: d.getUTCFullYear(), M: d.getUTCMonth() + 1, d: d.getUTCDate(), h: d.getUTCHours(), m: d.getUTCMinutes(), s: d.getUTCSeconds()};
+}
+const 두자리 = (n) => String(n).padStart(2, "0");
 const FMS켬 = (new URLSearchParams(location.search).get("fms") === "1" || window.FMS데모 === true) && window.parent !== window;
 const 처음이름 = FMS켬 ? null : 지금이름읽기(), 저장본 = 처음이름 ? 보관읽기()[처음이름] : null;
 let 모형 = 깊은복사(저장본 && 저장본.판 === 2 ? 기둥높이맞추기(저장본) : 원본);
@@ -1144,7 +1158,7 @@ async function glb읽기(buf) {
 }
 async function fms파일(path) {           // FMS API 의 파일(바이트) — fms() 는 JSON 만 다룬다
   if (!FMS.토큰) await 토큰받기();
-  const 한번 = () => fetch(path, {cache: "no-store", headers: {Authorization: "Bearer " + FMS.토큰}});
+  const 한번 = () => { const 보낸 = Date.now(); return fetch(path, {cache: "no-store", headers: {Authorization: "Bearer " + FMS.토큰}}).then(r => (서버시계(r, 보낸), r)); };
   let r = await 한번();
   if (r.status === 401) { FMS.토큰 = null; await 토큰받기(); r = await 한번(); }
   if (!r.ok) throw new Error("HTTP " + r.status);
@@ -1813,7 +1827,7 @@ $("replayBtn").onclick = () => 재생열기(24);
    온도 밖의 값(누수·전력·항온항습기)은 지금 값 그대로 — 머리말에 적는다. 단계 색은 화면 온도 문턱(27/30/32℃)으로 (지난 알람 단계는 따로 안 받는다).
    재생 중에는 실시간 받기를 멈추고, 닫으면 다시 켠다. 데모(파일로 열기)는 가상 값의 시간을 거꾸로 돌린다 */
 const 재생 = {켬: false, 시각들: [], i: 0, 값: new Map(), 타이머: null, 판: null, 시간: 24, 데모기준: 100, 받은: null};
-const 시각글 = (t) => { const d = new Date(t * 1000), z = (n) => String(n).padStart(2, "0"); return `${d.getMonth() + 1}/${d.getDate()} ${z(d.getHours())}:00`; };
+const 시각글 = (t) => { const k = KST(t); return `${k.M}/${k.d} ${두자리(k.h)}:00`; };
 function 재생정지() { clearInterval(재생.타이머); 재생.타이머 = null; }
 function 재생판() {
   if (!재생.판) {
@@ -1843,7 +1857,7 @@ async function 재생열기(시간 = 24) {
   clearInterval(라이브.타이머); 재생정지();
   const 차례 = 재생.차례 = (재생.차례 || 0) + 1;
   재생.켬 = true; 재생.시간 = 시간; 재생.받은 = null; 재생.값 = new Map();
-  const 지금 = Math.floor(Date.now() / 3600000) * 3600, 시작 = 지금 - 시간 * 3600;
+  const 지금 = Math.floor(지금ms() / 3600000) * 3600, 시작 = 지금 - 시간 * 3600;
   재생.시각들 = []; for (let t = 시작 + 3600; t <= 지금; t += 3600) 재생.시각들.push(t);
   재생.i = 재생.시각들.length - 1; 재생판(); 재생판그리기();
   if (FMS켬) {
@@ -1975,9 +1989,9 @@ function 토큰받기() {
 }
 async function fms(path, opt = {}) {
   if (!FMS.토큰) await 토큰받기();
-  const 한번 = () => fetch(path, {method: opt.method || "GET", cache: "no-store",
+  const 한번 = () => { const 보낸 = Date.now(); return fetch(path, {method: opt.method || "GET", cache: "no-store",
     headers: {Authorization: "Bearer " + FMS.토큰, ...(opt.body ? {"Content-Type": "application/json"} : {})},
-    body: opt.body ? JSON.stringify(opt.body) : undefined});
+    body: opt.body ? JSON.stringify(opt.body) : undefined}).then(r => (서버시계(r, 보낸), r)); };
   let r = await 한번();
   if (r.status === 401) { FMS.토큰 = null; await 토큰받기(); r = await 한번(); }
   const b = await r.json().catch(() => ({}));
@@ -2023,8 +2037,8 @@ function 점값글(x) {
   if (종 === "위치") return 소수(값) + " m";
   /* 시각 값 (91차 「마지막열림시각이 너무 많은 숫자가 나온다」) — 클라이브 도어처럼 epoch 초를 값으로 보내는 센서는 「시:분:초」 로 */
   if (값 >= 1e9 && 값 < 1e10 && (/^(time|timestamp|epoch|unixtime)$/i.test(String(p.unit || "").trim()) || (!p.unit && /시각/.test(p.name || "")))) {
-    const d = new Date(값 * 1000), z = (n) => String(n).padStart(2, "0");
-    return `${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+    const k = KST(값);
+    return `${두자리(k.M)}-${두자리(k.d)} ${두자리(k.h)}:${두자리(k.m)}:${두자리(k.s)}`;
   }
   return (Math.abs(값) >= 100 ? 소수(값, 0) : 소수(값, Math.abs(값) < 10 ? 2 : 1)) + (p.unit ? " " + p.unit : "");
 }
@@ -2032,7 +2046,7 @@ function 점값글(x) {
 function FMS값(it) {
   const ps = 항목점들(it);
   if (!ps.length) return {실제: true, 없음: true, 단계: "정지", 글: [`코드 ${it.점} 없음`], 점들: []};
-  const 지금 = Date.now() / 1000, v = {실제: true, 점들: []};
+  const 지금 = 지금ms() / 1000, v = {실제: true, 점들: []};
   let 단 = "정상", 받음 = 0, 알람 = 0, 예측 = 0;
   for (const p of ps) {
     const L = p.latest || {}, st = FMS.상태.get(p.id) || {}, 새 = L.ts && 지금 - L.ts <= FMS.정체 && L.value_num != null;
@@ -2084,8 +2098,8 @@ async function FMS값받기() {
   const [, st] = await Promise.all([FMS점받기(), fms("/api/point-status")]);
   FMS.상태 = new Map((st.points || []).map(x => [x.point_id, x]));
   FMS.받은시각 = Date.now();
-  const d = new Date(), z = (n) => String(n).padStart(2, "0");
-  FMS.머리말 = `FMS 실시간 · ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())} · ${FMS.주기 / 1000}초마다`;
+  const k = KST();
+  FMS.머리말 = `FMS 실시간 · ${두자리(k.h)}:${두자리(k.m)}:${두자리(k.s)} · ${FMS.주기 / 1000}초마다`;
 }
 function FMS값매기기() {
   라이브.값.clear(); 라이브.랙상태.clear();
@@ -2121,7 +2135,7 @@ function FMS줄(it) {
 /* 현장 고르기·배치 읽기 */
 function FMS출처표시() {
   const s = FMS.현장, b = FMS.저장정보 || {};
-  const 말 = {서버: `FMS 에 저장된 배치${b.saved_at ? " · " + new Date(b.saved_at * 1000).toLocaleString("ko-KR") : ""}${b.saved_by ? " · " + b.saved_by : ""}`,
+  const 말 = {서버: `FMS 에 저장된 배치${b.saved_at ? " · " + 시각(b.saved_at) : ""}${b.saved_by ? " · " + b.saved_by : ""}`,
     기본: "기본 배치 (아직 FMS 에 저장 안 함 — 편집에서 저장하면 이 현장 배치가 됩니다)",
     예시: "이 현장 배치가 없어 예시 도면을 보여 줍니다 — 편집해서 저장하세요"}[FMS.출처] || "현장 배치를 읽는 중…";
   $("source").textContent = s ? `${s.name} · ${말}` : 말;
@@ -2826,9 +2840,9 @@ function 정렬(방식) {
 function 모두고르기() { 고르기(모형.항목.filter(만질수있나).map(it => it.id)); }
 
 /* ── 저장 ── */
-function 시각() {
-  const d = new Date(), z = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
+function 시각(초) {                       // 「2026-10-16 14:05」 — KST (106차)
+  const k = KST(초);
+  return `${k.y}-${두자리(k.M)}-${두자리(k.d)} ${두자리(k.h)}:${두자리(k.m)}`;
 }
 const 배치글 = () => JSON.stringify({판: 2, 방: 모형.방, 항목: 모형.항목, 저장시각: 시각()}, null, 1);
 const 파일종류 = [{description: "전산실 배치 (JSON)", accept: {"application/json": [".json"]}}];
@@ -4115,8 +4129,8 @@ function 녹화시작() {
   녹.onstop = () => {
     const mp4 = 형.startsWith("video/mp4"), b = new Blob(조각, {type: mp4 ? "video/mp4" : "video/webm"});
     if (b.size < 2048) { 알림("녹화된 장면이 거의 없습니다", "그래픽이 느려 화면이 거의 바뀌지 않았습니다 — 조금 더 길게 녹화해 보세요. 파일은 만들지 않았습니다."); 걷기.마지막영상 = {이름: null, 크기: b.size, 형식: b.type}; return; }
-    const d = new Date(), z = (n) => String(n).padStart(2, "0");
-    const 이름 = `현장보기_${FMS켬 && FMS.현장 ? FMS.현장.name + "_" : ""}${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}.${mp4 ? "mp4" : "webm"}`;
+    const k = KST();
+    const 이름 = `현장보기_${FMS켬 && FMS.현장 ? FMS.현장.name + "_" : ""}${k.y}${두자리(k.M)}${두자리(k.d)}_${두자리(k.h)}${두자리(k.m)}.${mp4 ? "mp4" : "webm"}`;
     걷기.마지막영상 = {이름, 크기: b.size, 형식: b.type};
     const a = 엘("a", {href: URL.createObjectURL(b), download: 이름}); document.body.append(a); a.click(); a.remove();
     알림("영상을 저장했습니다", `${이름} (${(b.size / 1048576).toFixed(1)} MB)${mp4 ? "" : " — 이 브라우저는 MP4 녹화를 지원하지 않아 WebM 으로 저장했습니다"}`);
@@ -4295,7 +4309,7 @@ window.__room3d = {덮어쓰기: (o) => { 라이브.덮어쓰기 = o || {}; },
   선위치: (id, m) => 선위치(찾기id.get(id), m), 꺾는중: () => 꺾는중 && 꺾는중.점들.length,
   그린크기: (id) => { const m = 매시들.get(id); return m ? [+m.scale.x.toFixed(3), +m.scale.z.toFixed(3), +m.scale.y.toFixed(3)] : null; },
   표칩: () => [...라이브.표].filter(([, s]) => s.visible && s.userData.작은 && s.material.map === s.userData.작은.tex).map(([id]) => id),
-  FMS: () => ({켬: FMS켬, 시작됨: FMS.시작됨, 현장: FMS.현장 && FMS.현장.code, 출처: FMS.출처, 점: FMS.점들.length, 밖알람: FMS.밖알람,
+  FMS: () => ({켬: FMS켬, 시작됨: FMS.시작됨, 현장: FMS.현장 && FMS.현장.code, 출처: FMS.출처, 점: FMS.점들.length, 밖알람: FMS.밖알람, 머리말: FMS.머리말,
     값: Object.fromEntries([...라이브.값].map(([k, v]) => [k, {단계: v.단계, 글: 값글(k)}]))}), FMS로가기, 현장열기,
   라이브: () => ({켬: 라이브.켬, 센서: 라이브.센서.length, 알람: 라이브.알람.map(a => [a.id, a.v.단계]), 랙색: [...라이브.랙상태], 랙온도: [...라이브.랙온도],
     재생: 재생.켬 ? {i: 재생.i, 수: 재생.시각들.length, 시각: 재생.시각들[재생.i]} : null}), 라이브켜기, 알람으로, 재생열기, 재생보기, 재생닫기,
