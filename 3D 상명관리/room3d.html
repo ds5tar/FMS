@@ -1979,7 +1979,8 @@ const FMS = {토큰: null, 권한: {}, 사용자: "", 기다림: [], 시작됨: 
   점들: [], 태그: new Map(), 번호: new Map(), 상태: new Map(), 정체: 300, 주기: 5000, 받은시각: 0, 머리말: "FMS 실시간", 밖알람: 0};
 const FMS현장열쇠 = "fms.room3d.site";      // 마지막으로 본 현장 번호 (토큰이 아니다)
 /* 파일로 연 데모(file://)는 출처가 「null」 이라 그 이름으로는 못 보낸다 — 그때만 「*」 (받는 쪽은 출처·보낸 창을 그대로 본다, 90차) */
-const FMS보낼곳 = location.origin === "null" ? "*" : location.origin;
+/* 데모의 srcdoc 문서는 location.origin 이 「null」 이지만 실제 출처는 부모 것(self.origin) — 출처는 self.origin 으로 본다 (121차, GitHub 공개 데모에서 연결이 끊겼다) */
+const FMS보낼곳 = self.origin === "null" ? "*" : self.origin;
 function FMS부르기(종류) { parent.postMessage({fms3d: 종류}, FMS보낼곳); }
 function 토큰받기() {
   return new Promise((됨, 안됨) => {
@@ -2000,7 +2001,7 @@ async function fms(path, opt = {}) {
 }
 if (FMS켬) {
   addEventListener("message", e => {
-    if (e.origin !== location.origin || e.source !== parent) return;
+    if (e.origin !== self.origin || e.source !== parent) return;
     const m = e.data || {};
     if (m.fms3d === "init") {
       FMS.토큰 = m.token; FMS.권한 = m.permissions || {}; FMS.사용자 = m.user || "";
