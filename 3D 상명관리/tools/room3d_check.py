@@ -181,6 +181,18 @@ try:
         pg.evaluate("document.querySelector('#alarms .알람').click()"); 다옴()      # 목록이 2초마다 새로 그려져 느린 시험기에서는 「안정」 을 못 기다린다
         확인("흡기 온도" in pg.inner_text("#info") or "상태" in pg.inner_text("#info"), "알람을 누르면 그 장비로 가서 실시간 값")
         pg.screenshot(path=f"{OUT}/03_실시간_알람.png")
+        # 123차 — 왼쪽 판·알람 창·평면 위치 고르기에도 「접기」 (시점 조절처럼). 접으면 머리 줄만 남는다
+        for 판, 단추, 속 in (("#ui", "#ui_fold", "#layerChecks"), ("#alarms", "#alarms .접기", "#alarms .알람"), ("#map", "#map_fold", "#mini")):
+            확인(pg.locator(단추).count() == 1 and pg.inner_text(단추).strip() == "접기", f"{판} 접기 단추")
+            pg.evaluate(f"document.querySelector('{단추}').click()"); pg.wait_for_timeout(200)      # 알람 창은 2초마다 새로 그려져 「안정」 을 못 기다린다
+            확인(pg.evaluate(f"document.querySelector('{판}').classList.contains('접힘')") and pg.locator(속).first.is_hidden()
+                 and pg.inner_text(단추).strip() == "펴기", f"{판} 접으면 머리만 남음")
+        pg.wait_for_timeout(2500)        # 알람 창은 2초마다 새로 그려진다 — 접힌 채로 남아야
+        확인(pg.locator("#alarms .알람").first.is_hidden() and pg.inner_text("#alarms .접기").strip() == "펴기", "알람 창 — 새로 그려도 접힌 채")
+        pg.screenshot(path=f"{OUT}/03b_세_판_접음.png")
+        for 판, 단추, 속 in (("#ui", "#ui_fold", "#layerChecks"), ("#alarms", "#alarms .접기", "#alarms .알람"), ("#map", "#map_fold", "#mini")):
+            pg.evaluate(f"document.querySelector('{단추}').click()"); pg.wait_for_timeout(200)
+            확인(not pg.evaluate(f"document.querySelector('{판}').classList.contains('접힘')") and pg.locator(속).first.is_visible(), f"{판} 펴기")
         pg.click("#liveBtn"); pg.wait_for_timeout(300)
         확인(not pg.evaluate("window.__room3d.라이브().켬") and pg.locator("#alarms").is_hidden(), "실시간 미리보기 끄기")
         pg.click("#v_iso"); 다옴()
