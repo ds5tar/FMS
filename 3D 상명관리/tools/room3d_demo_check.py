@@ -90,9 +90,30 @@ with sync_playwright() as p:
              f"알람의 「3D」 — 서울로 돌아와 {짝[1]} 고름 ({fr.evaluate('window.__room3d.고른()')})")
         pg.wait_for_timeout(1500); pg.screenshot(path=f"{OUT}/d3_데모_3D로가기.png")
 
+    # 119차 — 데모 센서는 서울·대전·부산 기본 배치에 다 놓였다. 장애가 난 센서(활성 알람)마다 3D 가 그 자리를 고르는지
+    없는들 = [tag for pid, tag in 표 if not any(tag == c or tag.startswith(c + ".") for _, c in 코드들)]
+    확인(not 없는들, f"서울 데모 센서가 모두 3D 배치에 있음 (빠짐 {없는들[:5]})")
+    알람들 = pg.evaluate("fetch('/api/alarms').then(r => r.json()).then(b => (b.alarms || b).filter(a => a.point_id).map(a => [a.site_id, a.point_id]))")
+    태그 = dict(표)
+    for sid, pid in 알람들:
+        if sid != 1 or pid not in 태그:
+            continue
+        항목 = next((iid for iid, c in 코드들 if 태그[pid] == c or 태그[pid].startswith(c + ".")), None)
+        pg.evaluate(f"openRoom3d(1, {pid})")
+        # 장비는 골라 지고, 센서(온도·누수 등)는 고르지 않고 시선이 그 자리로 날아간다 (알람으로 — 84차 설계)
+        식 = (f"(() => {{ const R = window.__room3d, it = R.모형().항목.find(i => i.id === '{항목}'); if (!it || R.FMS().현장 !== 'SEOUL' "
+              f"|| R.나는중() || document.querySelector('.대화막')) return false; if (R.고른().includes(it.id)) return true; "
+              f"const t = R.controls.target; return Math.abs(t.x - it.x) < Math.max(1, it.w) && Math.abs(t.z - it.y) < Math.max(1, it.w, it.d); }})()")
+        확인(항목 is not None and 기다리기(fr, 식, 30000),
+             f"장애 센서 {태그[pid]} → 3D 그 자리 ({항목}, 고름 {fr.evaluate('window.__room3d.고른()')}, "
+             f"시선 {fr.evaluate('[window.__room3d.controls.target.x.toFixed(1), window.__room3d.controls.target.z.toFixed(1)]')})")
+    pg.screenshot(path=f"{OUT}/d3c_장애센서_3D.png")
+
     # 97차 — 3D 배치에 붙지 않은 센서로 가라고 하면 팝업창으로 알린다 (전에는 왼쪽 아래 정보 칸에 글만 바뀌었다)
-    없는 = next((pid for pid, tag in 표 if not any(tag == c or tag.startswith(c + ".") for _, c in 코드들)), None)
-    확인(없는 is not None, f"서울 배치에 안 붙은 센서 찾기 ({없는})")
+    #   119차부터 데모 센서는 모두 배치에 있다 — 배치 편집에서 한 항목의 센서 연결을 풀어 「붙지 않은 센서」 를 만든다
+    없는 = next((pid for pid, tag in 표 if tag == "LEAK.12"), None)
+    if 없는:
+        fr.evaluate("window.__room3d.모형().항목.filter(i => i.점 === 'LEAK.12').forEach(i => { delete i.점; })")
     if 없는:
         pg.evaluate(f"openRoom3d(1, {없는})")
         뜸 = 기다리기(fr, "!!document.querySelector('.대화막') && document.querySelector('.대화막').textContent.includes('3D 배치에 없습니다')", 30000)

@@ -44,7 +44,8 @@ for _ in range(60):
 try:
     with sync_playwright() as p:
         b = p.chromium.launch(args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"])
-        ctx = b.new_context(viewport={"width": 1700, "height": 950})
+        # 106차 — PC 를 뉴욕 시간대로 둔다. 화면 시각은 그래도 서버 시계·한국 시간이어야 한다
+        ctx = b.new_context(viewport={"width": 1700, "height": 950}, timezone_id="America/New_York")
         pg = ctx.new_page()
         오류 = []
         pg.on("console", lambda m: m.type in ("error", "warning") and 오류.append(m.text))
@@ -88,6 +89,18 @@ try:
         확인(len(값) == 코드수, f"코드 붙은 항목마다 값 — {len(값)} / {코드수}")
         없음 = [k for k, v in 값.items() if any("없음" in g and "코드" in g for g in v["글"])]
         확인(not 없음, f"코드 없음 0건 — {없음[:5]}")
+        # 106차 사용자 「모든 시각은 통일성있게 서버시각으로한다 한국시각에 따른다」 — 브라우저가 뉴욕 시간대여도 KST
+        import re
+        from datetime import datetime, timedelta, timezone
+        def KST차(글):
+            m = re.search(r"(\d{2}):(\d{2}):(\d{2})", 글 or "")
+            if not m: return None
+            k = datetime.now(timezone(timedelta(hours=9))); 초 = k.hour * 3600 + k.minute * 60 + k.second
+            차 = abs(초 - (int(m[1]) * 3600 + int(m[2]) * 60 + int(m[3])))
+            return min(차, 86400 - 차)
+        머 = fr.evaluate("window.__room3d.FMS().머리말") or ""; 시계 = pg.inner_text("#clock")
+        확인(KST차(머) is not None and KST차(머) < 120, f"3D 머리말 시각이 KST — 「{머}」")
+        확인(KST차(시계) is not None and KST차(시계) < 120, f"관제 화면 머리줄 시계가 KST — 「{시계}」")
         print("   값 보기:", {k: 값[k] for k in ("AC05", "AC07", "R01-03", "LL05", "UPS01", "TH01", "T03", "WS02") if k in 값})
         확인(값["LL05"]["단계"] == "위험" and "누수 감지" in 값["LL05"]["글"][0], f"5열 누수(PLAN.LEAK.05 위급 알람) — {값['LL05']}")
         확인(값["UPS01"]["단계"] == "위험", f"UPS 배터리 전압 저하(중대) → UPS 위험 — {값['UPS01']}")
