@@ -1,4 +1,5 @@
-# 단독 데모(demo.html)를 파일로 열어 「3D 상면」 이 서버판처럼 FMS 연결로 도는지 크로미엄으로 본다 — 쓰는 법: python3 room3d_demo_check.py <그림 폴더> [demo.html] (playwright 필요)
+# 단독 데모(demo.html)를 파일로 열어 「3D 상면」 이 서버판처럼 FMS 연결로 도는지 크로미엄으로 본다 — 쓰는 법: python3 room3d_demo_check.py <그림 폴더> [demo.html] [http] (playwright 필요)
+#   세 번째에 http 를 주면 파일 대신 http://127.0.0.1 로 연다 — GitHub Pages 처럼 출처가 있는 주소 (121차, 파일로 열 때만 되던 연결)
 #
 # 90차 (2026-10-14, 사용자 「지금까지 했는 내용을 demo.html 에 적용. 앞으로 계속 적용해라」)
 #   현장 고르기(서울·부산·대전) · 센터 기본 배치 · 데모 센서 값과 알람 · 현장 바꾸기 · 알람의 「3D」 로 그 센서 앞으로 ·
@@ -9,6 +10,7 @@ from playwright.sync_api import sync_playwright
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else "demo_shots"
 DEMO = Path(sys.argv[2] if len(sys.argv) > 2 else Path(__file__).resolve().parent / "demo.html").resolve()
+HTTP = len(sys.argv) > 3 and sys.argv[3] == "http"
 os.makedirs(OUT, exist_ok=True)
 실패 = []
 
@@ -37,7 +39,15 @@ with sync_playwright() as p:
     오류 = []
     pg.on("console", lambda m: m.type in ("error", "warning") and 오류.append(m.text))
     pg.on("pageerror", lambda e: 오류.append(str(e)))
-    pg.goto(DEMO.as_uri()); pg.wait_for_timeout(2500)
+    if HTTP:
+        import functools, http.server, threading
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(
+            type("조용", (http.server.SimpleHTTPRequestHandler,), {"log_message": lambda *a: None}), directory=str(DEMO.parent)))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/{DEMO.name}")
+    else:
+        pg.goto(DEMO.as_uri())
+    pg.wait_for_timeout(2500)
 
     # 96차 — 3D 를 한 번도 안 연 채 장애 내역 팝업의 센서를 눌러도 그 센서까지 시선이 간다.
     # 전에는 3D 화면이 처음 뜨면서 현장을 읽는 동안 「그 센서로 가기」 가 먼저 와서 버려졌다 — 3D 화면만 뜨고 끝
