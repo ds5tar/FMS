@@ -42,7 +42,7 @@
   #info b{font-size:13px}
   #info .k{color:var(--sub);display:inline-block;min-width:66px}
   #map .t{font-weight:600;font-size:12px;margin-bottom:5px}
-  #map .t span{font-weight:400;color:var(--sub);font-size:11px}
+  #map .t span span{font-weight:400;color:var(--sub);font-size:11px}
   #mini{display:block;cursor:crosshair;border:1px solid var(--line);border-radius:5px;
     background:#fff;touch-action:none}
   #help{color:var(--sub);font-size:11px;line-height:1.6;margin-top:6px}
@@ -51,6 +51,12 @@
   #gauge .hd b{font-size:13px}
   #gauge select{font:inherit;font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:6px}
   #gauge.접힘 .몸{display:none}
+  /* 123차 — 왼쪽 판·알람 창·평면 위치 고르기도 접는다. 접으면 머리 줄만 */
+  #ui .hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  #ui .hd h1{margin:0}
+  #map .t{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  button.접기{font-size:12px;padding:1px 8px;flex:none}
+  #ui.접힘>:not(.hd),#alarms.접힘>:not(.머리),#map.접힘>:not(.t){display:none!important}
   .g{display:grid;grid-template-columns:58px 24px 1fr 24px 78px;align-items:center;gap:4px;margin-top:6px}
   .g .이름{font-size:12px;font-weight:600;white-space:nowrap}
   .g .이름 i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:0}
@@ -230,7 +236,7 @@
 
 <!-- ── 보기 모드 ── -->
 <div id="ui" class="panel 보기만">
-  <h1>전산실 3D 상면</h1>
+  <div class="hd"><h1>전산실 3D 상면</h1><button id="ui_fold" class="접기" title="접기·펴기">접기</button></div>
   <div class="sub" id="source">평면도에서 뽑은 좌표 · 바닥타일 600 mm</div>
   <select id="layoutSel" title="브라우저에 저장한 배치 중 무엇을 볼지 고릅니다" hidden></select>
   <div id="layerChecks"></div>
@@ -281,7 +287,7 @@
 </div>
 
 <div id="map" class="panel 보기만">
-  <div class="t">평면에서 위치 고르기 <span>누르거나 끌면 그곳을 봅니다</span></div>
+  <div class="t"><span>평면에서 위치 고르기 <span>누르거나 끌면 그곳을 봅니다</span></span><button id="map_fold" class="접기" title="접기·펴기">접기</button></div>
   <canvas id="mini"></canvas>
   <div id="help">왼쪽 끌기 = 회전 · 오른쪽(가운데·Shift) 끌기 = 이동<br>
     휠 = 마우스가 있는 쪽으로 확대 · 두 번 누르기 = 그 자리로 가기<br>
@@ -1773,7 +1779,9 @@ function 알람그리기() {
   const 수 = (단) => 라이브.알람.filter(a => a.v.단계 === 단).length;
   el.replaceChildren(
     엘("div", {class: "머리"}, 엘("b", {textContent: `알람 ${라이브.알람.filter(a => a.v.단계 !== "정지").length}건 · ${FMS켬 ? "미수신" : "대기"} ${수("정지")}${FMS켬 ? "개" : "대"}`}),
-      엘("span", {class: "sub", textContent: FMS켬 ? FMS.머리말 : "데모 값 · 2초마다 바뀜"})),
+      엘("span", {class: "sub", textContent: FMS켬 ? FMS.머리말 : "데모 값 · 2초마다 바뀜"}),
+      엘("button", {class: "접기", title: "접기·펴기", textContent: el.classList.contains("접힘") ? "펴기" : "접기",      // 123차 — 다시 그려도 접힌 채
+        onclick: (e) => { e.stopPropagation(); const 접 = el.classList.toggle("접힘"); e.currentTarget.textContent = 접 ? "펴기" : "접기"; }})),
     엘("div", {class: "범례"}, ...["정상", "주의", "경고", "위험", "정지"].map(단 => 엘("span", {}, 엘("i", {style: "background:" + 상태색[단]}), 단 === "정지" ? "대기·정지" : 단)),
       엘("span", {textContent: FMS켬 ? `· 배치한 FMS 센서 ${라이브.센서.length - (FMS.코드없음 || []).length}${FMS.밖알람 ? ` · 배치 안 된 센서의 알람 ${FMS.밖알람}건` : ""}${(FMS.코드없음 || []).length ? ` · 코드를 못 찾은 항목 ${FMS.코드없음.length}개 (배치 편집에서 확인)` : ""}`
         : `· 랙 흡기 ${라이브.센서.filter(s => s.랙).length} · 통로 온습도 ${라이브.센서.filter(s => s.종류 === "s_th").length} · 누수선 ${라이브.센서.filter(s => s.종류 === "s_leak_line").length}`})),
@@ -2597,6 +2605,9 @@ function 게이지맞추기() {
     if (document.activeElement !== 게.막대) 게.막대.value = 게.로그 ? 로그.막대(v[게.키]) : v[게.키];
   }
 }
+/* 123차 — 왼쪽 판·평면 위치 고르기 접기 (알람 창은 알람그리기 에서) */
+for (const [판, 단추] of [["ui", "ui_fold"], ["map", "map_fold"]])
+  $(단추).onclick = () => { const 접 = $(판).classList.toggle("접힘"); $(단추).textContent = 접 ? "펴기" : "접기"; };
 $("g_fold").onclick = () => {
   const 접 = $("gauge").classList.toggle("접힘");
   $("g_fold").textContent = 접 ? "펴기" : "접기";
