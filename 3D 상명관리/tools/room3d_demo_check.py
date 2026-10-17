@@ -168,6 +168,31 @@ with sync_playwright() as p:
     확인(pg.evaluate("document.getElementById('modal').classList.contains('hide')"), "추세 그래프 팝업은 안 뜸 (줄 누름과 따로)")
     pg.wait_for_timeout(1500); pg.screenshot(path=f"{OUT}/d7_장애예측_3D.png")
 
+    # 122차 — VR 현장보기 「다음 알람」 이 벽 너머에 서면 그 벽이 화면을 덮어 설비가 하나도 안 보였다
+    # (GitHub 데모, 서울 TH01 — 온습도계 2 m 옆이 전기실 벽 뒤였다). 알람마다 선 자리에서 그 설비까지 벽·랙에 안 가려야 한다
+    fr.evaluate("document.getElementById('walkBtn').click()")
+    기다리기(fr, "window.__room3d.걷기().켬 && !window.__room3d.걷기().이동중")
+    ids = [a[0] for a in fr.evaluate("window.__room3d.라이브().알람") if a[1] != "정지"]
+    가린 = []
+    for i in ids:
+        fr.evaluate(f"window.__room3d.걷기알람(0, {i!r})")
+        if not 기다리기(fr, "!window.__room3d.걷기().이동중", 120000):      # 그래픽 카드 없는 창은 한 장에 몇 초 — 다 걸어간 뒤에 본다
+            가린.append(f"{i}←걸음이 안 끝남"); continue
+        막 = fr.evaluate("""(id) => {
+          const R = window.__room3d, M = R.모형(), it = M.항목.find(o => o.id === id), w = R.걷기();
+          const 안 = (o, x, y, e) => { const a = (o.회전 || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), dx = x - o.x, dy = y - o.y;
+            return Math.abs(dx * c + dy * s) <= o.w / 2 + e && Math.abs(-dx * s + dy * c) <= o.d / 2 + e; };
+          const 막는 = M.항목.filter(o => o !== it && o.종류 !== 'door' && o.종류 !== 'floor' && (o.z0 || 0) < 1.6 && (o.z0 || 0) + (o.h || 0) > 1.6
+                                         && /^(wall|col|rack|crac|ups|pdu|cabinet|panel|battery)/i.test(o.종류 || ''));
+          // 바라보는 쪽(요)으로 나아가며 그 설비에 먼저 닿는지, 벽·랙에 먼저 닿는지 (감지선은 누수 위치를 본다)
+          const dx = Math.sin(w.요), dy = Math.cos(w.요);
+          for (let k = 1; k < 200; k++) { const x = w.x + dx * k * .1, y = w.y + dy * k * .1;
+            if (안(it, x, y, .3)) return null; const o = 막는.find(o => 안(o, x, y, 0)); if (o) return o.id + ' ' + (o.이름 || o.종류); }
+          return '20 m 안에 그 설비가 없음'; }""", i)
+        if 막: 가린.append(f"{i}←{막}")
+    확인(ids and not 가린, f"VR 현장보기 알람 {len(ids)}곳 — 선 자리에서 그 설비가 안 가림 {가린}")
+    fr.evaluate("document.getElementById('walkExit').click()")
+
     # 저장 — 이 창 안의 가짜 API 에 남고, 다시 열면 「서버」 배치
     r = pg.evaluate("""fetch('/api/sites/1/room-layout').then(r => r.json()).then(b => b.layout)""")
     확인(r is None, "처음엔 저장된 배치 없음 (기본 배치로 열림)")
