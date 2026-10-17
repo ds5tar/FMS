@@ -3973,6 +3973,18 @@ function 막힘(x, y) {
   if (x < .25 || y < .25 || x > 방().w - .25 || y > 방().d - .25) return true;
   return 모형.항목.some(o => o.종류 !== "door" && ["랙", "공조", "전력", "건축"].includes(분류(o)) && (o.z0 || 0) < 1.8 && 보이나(o) && 안쪽(o, x, y, .22));
 }
+/* 눈높이(1.6 m)에서 (x,y) → (tx,ty) 사이를 벽·기둥·랙·설비가 막는지 — 보려는 설비 자신은 빼고 (122차) */
+function 시야가림(x, y, tx, ty, 대상) {
+  const n = Math.ceil(Math.hypot(tx - x, ty - y) / .1);
+  const 막는 = 모형.항목.filter(o => o !== 대상 && o.종류 !== "door" && ["랙", "공조", "전력", "건축"].includes(분류(o))
+                                 && (o.z0 || 0) < 눈높이 && (o.z0 || 0) + (o.h || 0) > 눈높이 && 보이나(o));
+  for (let k = 1; k < n; k++) {
+    const px = x + (tx - x) * k / n, py = y + (ty - y) * k / n;
+    if (대상 && 안쪽(대상, px, py, .3)) continue;
+    if (막는.some(o => 안쪽(o, px, py))) return true;
+  }
+  return false;
+}
 function 빈자리(x, y) {
   if (!막힘(x, y)) return [x, y];
   for (let r = .3; r < 12; r += .3) for (let k = 0; k < 16; k++) {
@@ -4023,9 +4035,19 @@ function 걷기알람(방향수 = 1, 지정 = null) {
   const s = 센서찾기(id) || 찾기id.get(id); if (!s) return null;
   const v = 라이브.값.get(id), [tx, ty] = 감지선(s) ? 선위치(s, v && v.위치) : [s.x, s.y];
   const 높 = 감지선(s) ? .2 : Math.min(1.8, (s.z0 || 0) + (s.h || 1) / 2);
-  let 자리 = null;
-  for (const r of [2.0, 2.6, 1.5, 3.4, 4.5]) { for (let k = 0; k < 16 && !자리; k++) { const a = k * Math.PI / 8, x = tx + Math.cos(a) * r, y = ty + Math.sin(a) * r; if (!막힘(x, y)) 자리 = [x, y]; } if (자리) break; }
-  if (!자리) 자리 = 빈자리(tx, ty);
+  /* 설 자리 — 걸을 수 있고, 거기서 그 설비까지 벽·랙에 안 가리는 곳 (122차 — 벽 너머에 서면 그 벽이 화면을 덮어 설비가 하나도 안 보였다).
+     안 가리는 곳이 없으면 걸을 수 있는 곳 그대로 */
+  let 자리 = null, 가린자리 = null;
+  for (const r of [2.0, 2.6, 1.5, 3.4, 4.5, 6]) {
+    for (let k = 0; k < 16 && !자리; k++) {
+      const a = k * Math.PI / 8, x = tx + Math.cos(a) * r, y = ty + Math.sin(a) * r;
+      if (막힘(x, y)) continue;
+      if (시야가림(x, y, tx, ty, s)) { 가린자리 ??= [x, y]; continue; }
+      자리 = [x, y];
+    }
+    if (자리) break;
+  }
+  if (!자리) 자리 = 가린자리 || 빈자리(tx, ty);
   const [x, y] = 자리, 요 = Math.atan2(tx - x, ty - y), 거리 = Math.hypot(tx - x, ty - y), 피치 = Math.atan2(높 - 눈높이, 거리);
   if (renderer.xr.isPresenting && 걷기.몸) { 걷기.몸.position.set(x, 0, y); 걷기.몸.rotation.set(0, Math.PI + 요, 0); }
   else {
