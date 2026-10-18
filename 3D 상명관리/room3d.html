@@ -1572,9 +1572,9 @@ const 소수 = (v, n = 1) => v == null ? "—" : v.toFixed(n);
 function 값글(id) {
   const v = 라이브.값.get(id); if (!v) return [];
   if (v.글) return v.글;
-  if (v.공조) return v.운전 === "대기" ? [`${id} 대기`] : [`${id} ${v.운전}`, `공급 ${소수(v.공급)}℃ · 환기 ${소수(v.환기)}℃`, `습도 ${소수(v.습도, 0)}%`];
+  if (v.공조) return v.운전 === "대기" ? [`${id} 대기`] : [`${id} ${v.운전}`, `공급 ${소수(v.공급)}℃ · 환기 ${소수(v.환기)}℃`, `습도 ${소수(v.습도)}%`];
   if (v.누수 != null) return v.누수 ? [v.위치 != null ? `누수 감지 · ${소수(v.위치)} m 지점` : "누수 감지"] : ["누수 없음"];
-  if (v.습도 != null) return [v.온도 != null ? `${소수(v.온도)}℃ · ${소수(v.습도, 0)}%` : `${소수(v.습도, 0)}%`];
+  if (v.습도 != null) return [v.온도 != null ? `${소수(v.온도)}℃ · ${소수(v.습도)}%` : `${소수(v.습도)}%`];
   if (v.온도 != null) return [`${소수(v.온도)}℃`];
   return ["정상"];
 }
@@ -1585,7 +1585,7 @@ function 라이브줄(it) {
   const v = 라이브.값.get(it.id);
   if (v && v.공조) {
     줄.push(["상태", v.운전, v.단계]);
-    if (v.공급 != null) 줄.push(["공급 온도", 소수(v.공급) + " ℃", "정상"], ["환기 온도", 소수(v.환기) + " ℃", 온도단계(v.환기 - 3)], ["습도", 소수(v.습도, 0) + " %", 습도단계(v.습도)]);
+    if (v.공급 != null) 줄.push(["공급 온도", 소수(v.공급) + " ℃", "정상"], ["환기 온도", 소수(v.환기) + " ℃", 온도단계(v.환기 - 3)], ["습도", 소수(v.습도) + " %", 습도단계(v.습도)]);
   } else if (v) 줄.push(["현재 값", 값글(it.id).join(" "), v.단계]);
   for (const s of 라이브.센서) if (s.랙 === it.id) { const w = 라이브.값.get(s.id); 줄.push(["흡기 온도", `${소수(w.온도)} ℃ (${w.단계})`, w.단계]); }
   if (!줄.length && 라이브.랙상태.has(it.id)) 줄.push(["열 온도", `가까운 랙 센서가 ${라이브.랙상태.get(it.id)}`, 라이브.랙상태.get(it.id)]);
@@ -2042,14 +2042,20 @@ function 점값글(x) {
   if (종 === "누수") return 값 > 0 ? "누수 감지" : "누수 없음";
   if (종 === "연기") return 값 > 0 ? "연기 감지" : "정상";
   if (종 === "온도") return 소수(값) + " ℃";
-  if (종 === "습도") return 소수(값, 0) + " %";
+  if (종 === "습도") return 소수(값) + " %";
   if (종 === "위치") return 소수(값) + " m";
   /* 시각 값 (91차 「마지막열림시각이 너무 많은 숫자가 나온다」) — 클라이브 도어처럼 epoch 초를 값으로 보내는 센서는 「시:분:초」 로 */
   if (값 >= 1e9 && 값 < 1e10 && (/^(time|timestamp|epoch|unixtime)$/i.test(String(p.unit || "").trim()) || (!p.unit && /시각/.test(p.name || "")))) {
     const k = KST(값);
     return `${두자리(k.M)}-${두자리(k.d)} ${두자리(k.h)}:${두자리(k.m)}:${두자리(k.s)}`;
   }
-  return (Math.abs(값) >= 100 ? 소수(값, 0) : 소수(값, Math.abs(값) < 10 ? 2 : 1)) + (p.unit ? " " + p.unit : "");
+  /* 그 밖의 값 — 아날로그 소수 첫째 자리, 디지털 정수 (127차 사용자 「모든 센서값 표시에서 …」, 관제 화면 sensorDigital 과 같은 규칙) */
+  return (센서디지털(p, 값) ? String(Math.round(값)) : 소수(값)) + (p.unit ? " " + p.unit : "");
+}
+function 센서디지털(p, 값) {
+  if (String(p.point_kind || "").toUpperCase() === "DIGITAL" || /^(BOOL|INT)$/i.test(String(p.data_type || ""))) return true;
+  if (String(p.unit || "").trim()) return false;
+  return 값 != null && Number.isFinite(+값) && +값 === Math.round(+값);
 }
 /* 항목 하나의 값 — 붙은 센서 전부를 모아 한 단계로 */
 function FMS값(it) {
@@ -2074,15 +2080,15 @@ function FMS값(it) {
   v.단계 = !받음 && 단 === "정상" ? "정지" : 단;
   if (it.종류 === "crac") {
     v.공조 = true; v.운전 = !받음 ? "미수신" : 단 === "정상" ? "운전" : 단 === "주의" ? "주의" : "경보";
-    v.글 = [`${it.id} ${v.운전}`, [v.온도 != null ? `환기 ${소수(v.온도)}℃` : "", v.습도 != null ? `습도 ${소수(v.습도, 0)}%` : ""].filter(x => x).join(" · ") || "—"];
+    v.글 = [`${it.id} ${v.운전}`, [v.온도 != null ? `환기 ${소수(v.온도)}℃` : "", v.습도 != null ? `습도 ${소수(v.습도)}%` : ""].filter(x => x).join(" · ") || "—"];
   } else if (!받음) v.글 = ["미수신"];
   else if (v.누수 != null) {
     v.위치 = v.누수 && v.거리 != null ? v.거리 : null;
     v.글 = [v.누수 ? (v.위치 != null ? `누수 감지 · ${소수(v.위치)} m 지점` : "누수 감지") : "누수 없음"];
   }
   else if (v.연기 != null) v.글 = [v.연기 ? "연기 감지" : "연기 없음"];
-  else if (v.온도 != null || v.습도 != null) v.글 = [[v.온도 != null ? 소수(v.온도) + "℃" : "", v.습도 != null ? 소수(v.습도, 0) + "%" : ""].filter(x => x).join(" · ")];
-  else if (v.풍속 != null) v.글 = [소수(v.풍속, 2) + " m/s"];
+  else if (v.온도 != null || v.습도 != null) v.글 = [[v.온도 != null ? 소수(v.온도) + "℃" : "", v.습도 != null ? 소수(v.습도) + "%" : ""].filter(x => x).join(" · ")];
+  else if (v.풍속 != null) v.글 = [소수(v.풍속) + " m/s"];
   else v.글 = v.점들.filter(x => x.값 != null).slice(0, 2).map(x => `${점이름(x.p).replace(it.점, "").trim() || x.p.tag} ${점값글(x)}`);
   /* 알람이 전부 장애예측이 낸 것이면 그렇다고 적는다 (78차 — 값은 평소인데 「주의」 라 임계를 넘은 줄 알았다) */
   if (알람 && 예측 >= 알람 && v.글 && v.글.length) { v.예측 = true; v.글 = [v.글[0] + " · 예측 이상", ...v.글.slice(1)]; }
@@ -4340,6 +4346,7 @@ window.__room3d = {덮어쓰기: (o) => { 라이브.덮어쓰기 = o || {}; },
     녹화: !!걷기.녹화, 녹화상태: 걷기.녹화 ? {state: 걷기.녹화.녹.state, 조각: 걷기.녹화.조각.length, 바이트: 걷기.녹화.조각.reduce((a, b) => a + b.size, 0)} : null, 형식: 녹화형식(), 마지막영상: 걷기.마지막영상 || null, 막힘: 막힘(camera.position.x, camera.position.z)}), 걷기알람,
   이름표들: () => [...이름표들], 이름표칸: () => 이름표자리.map(k => k.map(Math.round)),
   타공수: () => 타공판 ? 타공판.count : 0,
+  값서식: (p, 값) => 점값글({p, 값, 종: 점종류(p)}),      // 127차 시험 손잡이
   선위치: (id, m) => 선위치(찾기id.get(id), m), 꺾는중: () => 꺾는중 && 꺾는중.점들.length,
   그린크기: (id) => { const m = 매시들.get(id); return m ? [+m.scale.x.toFixed(3), +m.scale.z.toFixed(3), +m.scale.y.toFixed(3)] : null; },
   표칩: () => [...라이브.표].filter(([, s]) => s.visible && s.userData.작은 && s.material.map === s.userData.작은.tex).map(([id]) => id),
