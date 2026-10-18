@@ -168,6 +168,19 @@ with sync_playwright() as p:
     확인(pg.evaluate("document.getElementById('modal').classList.contains('hide')"), "추세 그래프 팝업은 안 뜸 (줄 누름과 따로)")
     pg.wait_for_timeout(1500); pg.screenshot(path=f"{OUT}/d7_장애예측_3D.png")
 
+    # 127차 — 모든 센서 값: 아날로그 소수 첫째 자리 · 디지털 정수 (사용자 「모든 센서값 표시에서 …」).
+    # 전에는 습도 소수 없음(48 %), 풍속 둘째 자리(1.57 m/s), 그 밖은 10 아래 둘째 자리(출입문 0.00)
+    서식 = fr.evaluate("""() => { const f = window.__room3d.값서식; if (!f) return null; return [
+        f({unit: "%RH", type_code: "HUMIDITY", tag: "X.HUMI", name: "습도"}, 48.37),
+        f({unit: "m/s", type_code: "WIND", tag: "X.WIND", name: "풍속"}, 1.574),
+        f({unit: "", type_code: "DOOR", tag: "X.S3", name: "출입문 상태"}, 0),
+        f({unit: "V", tag: "X.VOLT", name: "전압"}, 4.567),
+        f({unit: "kWh", tag: "X.PWR", name: "전력량"}, 184795.34),
+        f({unit: "℃", type_code: "TEMP", tag: "X.TEMP", name: "온도"}, 24)]; }""")
+    확인(서식 == ["48.4 %", "1.6 m/s", "0", "4.6 V", "184795.3 kWh", "24.0 ℃"], f"3D 센서 값 서식 — {서식}")
+    확인(fr.evaluate("""() => { const t = document.getElementById('alarms').innerText; return !/\d+\.\d{2,}/.test(t) && !/습도 \d+%/.test(t); }"""),
+         "3D 알람 창 값 — 소수 둘째 자리·소수 없는 습도 없음")
+
     # 122차 — VR 현장보기 「다음 알람」 이 벽 너머에 서면 그 벽이 화면을 덮어 설비가 하나도 안 보였다
     # (GitHub 데모, 서울 TH01 — 온습도계 2 m 옆이 전기실 벽 뒤였다). 알람마다 선 자리에서 그 설비까지 벽·랙에 안 가려야 한다
     fr.evaluate("document.getElementById('walkBtn').click()")
