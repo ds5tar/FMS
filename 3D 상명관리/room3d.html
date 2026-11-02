@@ -16,6 +16,22 @@
   #cv.over{cursor:pointer}
   #cv.drag{cursor:grabbing}
   #ov{pointer-events:none}
+  /* 2D 열지도 (137차) — 3D 캔버스 위를 덮는 평면. 왼쪽 메뉴·정보·알람 창은 그 위에 그대로 */
+  #plan2d{position:fixed;inset:0;z-index:1;background:#fff;display:flex;flex-direction:column;padding:12px 14px 12px 292px}
+  :root[data-theme="dark"] #plan2d{background:#0e1116}
+  #plan2d[hidden]{display:none}
+  #plan2d .p2hd{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:2px 0 8px}
+  #plan2d .lg{display:inline-flex;align-items:center;gap:6px;font-size:11.5px}
+  #plan2d .lg i{display:inline-block;width:150px;height:10px;border-radius:3px}
+  #plan2d .lg em{font-style:normal;display:inline-flex;align-items:center;gap:3px}
+  #plan2d .lg em b{display:inline-block;width:10px;height:10px;border-radius:2px}
+  #p2svg{flex:1;min-height:0;width:100%}
+  #p2svg .rk{cursor:pointer;stroke:#334155;stroke-width:.03}
+  #p2svg .rk.on{stroke:#0b84c6;stroke-width:.12}
+  #p2svg text{pointer-events:none}
+  body.p2 #ui,body.p2 #info,body.p2 #alarms{z-index:2}
+  body.p2 #map,body.p2 #gauge{display:none}
+  body.p2 #alarms{top:auto;bottom:14px;right:14px;left:auto;transform:none}
   .모델표{border-collapse:collapse;font-size:12px;margin:6px 0;width:100%}
   .모델표 th,.모델표 td{border-bottom:1px solid var(--선,#e5e7eb);padding:3px 6px;text-align:left}
   #credits{position:fixed;right:8px;bottom:4px;z-index:3;font-size:10.5px;color:#6b7280;background:rgba(255,255,255,.7);padding:1px 6px;border-radius:4px;pointer-events:none;max-width:60vw}
@@ -40,7 +56,8 @@
   #toEdit{width:100%;margin-top:9px;background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
   #toEdit:hover{background:#0889c4}
   #info b{font-size:13px}
-  #info .k{color:var(--sub);display:inline-block;min-width:66px}
+  #info .k{color:var(--sub);display:inline-block;min-width:66px;margin-right:8px}
+  #info{overflow-y:auto;box-sizing:border-box}
   #map .t{font-weight:600;font-size:12px;margin-bottom:5px}
   #map .t span span{font-weight:400;color:var(--sub);font-size:11px}
   #mini{display:block;cursor:crosshair;border:1px solid var(--line);border-radius:5px;
@@ -121,6 +138,7 @@
   .타일:hover{border-color:var(--e-hi)}
   .타일.켬{border-color:var(--e-hi);background:#183b50}
   .타일 .견{width:22px;height:22px;border-radius:3px;flex:none;display:grid;place-items:center;font-size:10px;font-weight:700;color:#fff;border:1px solid #0006}
+  .타일 .견.클레이{border:none;background:none}
   .타일 .글{min-width:0;line-height:1.25}
   .타일 .글 b{display:block;font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .타일 .글 span{font-size:10px;color:var(--e-sub)}
@@ -225,6 +243,49 @@
   :root[data-theme="light"] .대화막{background:#0004}
   :root[data-theme="light"] .대화상자{box-shadow:0 12px 40px #0003}
 </style>
+<script>
+/* 3D 가 시작조차 못 하면 스스로 알린다 (189차) — 사용자 「외부에서 https://192.168.0.111:8080 으로 들어오면 3D 상면에 데이터가 표시 안 된다」.
+   그 PC 에서는 3D 본 스크립트(모듈)가 아예 돌지 않아 기본 글자만 남았다 — 무엇이 막았는지 화면 어디에도 없었다.
+   모듈보다 먼저 도는 보통 스크립트가 오류를 모으고, 스크립트 파일을 못 받거나 10초 안에 시작 신호가 없으면 왼쪽 아래 칸에 까닭을 적는다 */
+(function () {
+  var 오류 = [];
+  window.__r3d오류 = 오류;
+  function 짧게(u) { return String(u || "").replace(location.origin, "").slice(0, 120); }
+  addEventListener("error", function (e) {
+    var t = e.target;
+    if (t && t !== window && (t.tagName === "SCRIPT" || t.tagName === "LINK")) { 오류.push("파일을 못 받음 " + 짧게(t.src || t.href || "(3D 스크립트)")); 알리기(); return; }
+    오류.push((e.message || "오류") + (e.filename ? " — " + 짧게(e.filename) + ":" + (e.lineno || "") : ""));
+  }, true);                               // 다른 오류는 모아 두기만 — 10초 안에 첫 화면을 못 그렸을 때 함께 적는다
+  addEventListener("unhandledrejection", function (e) { var r = e.reason; 오류.push("처리 안 된 오류 — " + String(r && r.message || r).slice(0, 160)); });
+  function 브라우저() { var u = navigator.userAgent, m = /(Edg|Chrome|Firefox|Version)\/(\d+)/.exec(u); return m ? (m[1] === "Edg" ? "Edge " : m[1] === "Version" ? "Safari " : m[1] + " ") + m[2] : u.slice(0, 60); }
+  // 190차 그 PC 는 크롬 91 이었다 — three.js r185 의 새 문법(클래스 static 블록 등)을 못 읽어 three.core.min.js 6줄에서 멈췄다.
+  // 크롬·엣지 110 보다 낮으면 「너무 오래됨」 을 먼저 적는다(정확한 하한은 three.js 판마다 다르다 — 넉넉히 110)
+  var 최소 = 110;
+  function 오래됨() { var m = /(Edg|Chrome)\/(\d+)/.exec(navigator.userAgent); return m && +m[2] < 최소 ? +m[2] : 0; }
+  function 지도() { return HTMLScriptElement.supports ? (HTMLScriptElement.supports("importmap") ? "됨" : "안 됨") : "확인 못 함"; }
+  function 웹지엘() {
+    try { var c = document.createElement("canvas"); return c.getContext("webgl2") ? "WebGL2" : c.getContext("webgl") ? "WebGL1" : "없음 (그래픽 가속이 꺼졌거나 막힘)"; }
+    catch (x) { return "없음 (" + x.message + ")"; }
+  }
+  function 알리기() {
+    if (window.__r3d그림 && !window.__r3d멈춤) return;
+    var el = document.getElementById("info");
+    if (!el) { addEventListener("DOMContentLoaded", 알리기); return; }
+    var 줄 = [];
+    if (오래됨()) 줄.push("브라우저가 너무 오래됐습니다 (" + 브라우저() + ", 3D 는 " + 최소 + " 이상) — 크롬 메뉴 ⋮ → 도움말 → Chrome 정보 에서 업데이트하거나 최신 엣지로 여세요");
+    줄.push("브라우저 " + 브라우저() + " · 3D 그리기 " + 웹지엘() + " · 모듈 지도(importmap) " + 지도(),
+            "주소 " + location.host + (window.isSecureContext ? "" : " · 안전하지 않은 연결로 봄(인증서)"));
+    오류.slice(-3).forEach(function (x) { 줄.push("· " + x); });
+    줄.push("Ctrl+F5 로 새로 고쳐 보고, 그래도 같으면 이 칸을 찍어 알려 주세요.");
+    el.textContent = "";
+    var b = document.createElement("b"); b.textContent = window.__r3d시작 ? "3D 장면을 그리지 못했습니다" : "3D 화면을 시작하지 못했습니다"; el.appendChild(b);
+    줄.forEach(function (x) { var d = document.createElement("div"); d.className = "sub"; d.textContent = x; el.appendChild(d); });
+    el.setAttribute("data-diag", "1");
+  }
+  window.__r3d알리기 = 알리기;
+  setTimeout(function () { if (!window.__r3d그림) 알리기(); }, 10000);
+})();
+</script>
 <script type="importmap">
 {"imports":{"three":"./vendor/three/three.module.min.js",
             "three/addons/":"./vendor/three/addons/"}}
@@ -232,6 +293,11 @@
 </head>
 <body>
 <div id="stage"><canvas id="cv"></canvas><canvas id="ov"></canvas></div>
+<div id="plan2d" hidden><div class="p2hd"><b>2D 열지도</b>
+  <label>덧칠 <select id="p2_mode"><option value="온도">랙 흡기 온도</option><option value="알람">알람 상태</option><option value="없음">칠하지 않음</option></select></label>
+  <label><input type="checkbox" id="p2_floor" checked>바닥 온도 분포</label>
+  <span class="lg" id="p2_lg"></span><span class="sub" id="p2_note"></span></div>
+  <svg id="p2svg" preserveAspectRatio="xMidYMid meet"></svg></div>
 <div id="credits" hidden></div>
 
 <!-- ── 보기 모드 ── -->
@@ -245,6 +311,7 @@
     <button id="v_iso">비스듬히</button>
     <button id="v_top">위에서</button>
     <button id="v_eye">통로에서</button>
+    <button id="v_2d" title="위에서 본 평면에 랙 칸을 흡기 온도·알람 색으로 칠합니다 — 범례와 덧칠 종류 (137차, Device42·Nlyte 평면 덧칠)">2D 열지도</button>
   </div>
   <label style="margin-top:7px"><input type="checkbox" id="t_wallhi">벽을 전체 높이로 (3.6 m)</label>
   <label title="금속 판·손잡이에 방이 비칩니다. 그래픽 카드가 없는 PC(원격 데스크톱 등)에서는 느려 처음엔 꺼져 있습니다"><input type="checkbox" id="t_hq">반사 (고화질)</label>
@@ -255,6 +322,8 @@
     <label><input type="checkbox" id="t_heat" checked>바닥 온도 분포</label>
     <button id="replayBtn" title="지난 온도 기록을 시간 막대로 돌려 봅니다 — 바닥 온도 분포·랙 색·값 표가 그 시각 값으로 (87차)">⏱ 지난 기록 돌려보기</button>
   </div>
+  <button id="blindBtn" hidden title="어느 카메라에도 안 보이는 랙·설비(사각)를 바닥에 빨갛게 덧칠합니다 (174차)">시야 덧칠</button>
+  <div id="fovInfo" class="sub" hidden></div>
   <button id="walkBtn" title="하늘에서 내려와 사람 눈높이에서 현장을 걸으며 지금 상태를 봅니다 — VR 헤드셋도 됩니다 (88차)">🥽 VR 현장보기</button>
   <button id="toEdit">배치 편집 ✎</button>
 </div>
@@ -316,6 +385,7 @@
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+window.__r3d시작 = true;                 // 189차 — 모듈과 three.js 를 받았다 (못 받으면 앞의 보통 스크립트가 까닭을 적는다)
 
 const $ = (id) => document.getElementById(id);
 /* 요소 만들기 — 글은 textContent 로만 넣는다 (innerHTML 을 쓰지 않는다) */
@@ -501,7 +571,8 @@ let renderer;
 try {
   renderer = new THREE.WebGLRenderer({canvas: cv, antialias: true});
 } catch (e) {
-  알림("이 브라우저에서 3D 를 그릴 수 없습니다", "크롬이나 엣지 최신판으로 열어 주세요.");
+  window.__r3d멈춤 = true; (window.__r3d오류 || []).push("3D 그리기를 만들지 못함 — " + e.message);
+  if (window.__r3d알리기) window.__r3d알리기(); else 알림("이 브라우저에서 3D 를 그릴 수 없습니다", "크롬이나 엣지 최신판으로 열어 주세요.");
   throw e;
 }
 renderer.shadowMap.enabled = true;
@@ -1231,6 +1302,257 @@ function 이름판맞추기(m, it, h) {
 /* 센서 표 — 작은 센서를 3D 에서도 찾게, 종류 색 동그라미에 종류 모양 아이콘을 그린다.
    점형 센서는 이 아이콘이 곧 센서다 — 몸체 상자는 그리지 않고(누르기에만 쓴다) 아이콘을 센서 자리에 세운다 (84차 「점모양센서를 각각 형태에 맞는 아이콘으로」).
    아이콘 모양이 없는 종류는 예전처럼 글자 */
+/* ── 클레이 입체 아이콘 (2026-11-02 사용자 「3D 상면관리에도 적용」 — 관제 화면과 같은 그림) ──
+   그림 자료(CLAY_C·CLAY)는 index.html 과 **같은 글**이다 (50_api/tests/test_static.py 가 대조한다 — 한쪽만 고치면 시험이 깨진다).
+   3D 센서표는 캔버스 그림이라 CSS 움직임이 돌지 않는다 → 0.25초 간격 20장을 SVG 로 미리 그려 돌려 끼운다(돌기).
+   그래픽 카드 없는 PC(174차)를 생각해 장 바꾸기 간격은 「지난 그리기 시간 × 5」 이상, 편집 중·센서 층을 끄면 멈춘다.
+   장비 라이브러리 타일은 HTML 이라 페이지 CSS 로 움직인다. */
+var CLAY_C = {fr: "#7fa9cc", tp: "#c9e0f1", sd: "#5d88ad", lcd: "#2b4a66", dk: "#36546f",
+  fan: "#e8f2fa", line: "#a9c6dd", water: "#5dbcf0", blue: "#009bde", yel: "#ffd400",
+  red: "#e5484d", panel: "#9cc0de", brick: "#e8957a", glow: "#7fe0a0", led: "var(--icled, #30c37b)"};
+
+var CLAY = (function () {
+  var C = CLAY_C, L = C.led;
+  function f(n) { return +n.toFixed(2); }
+  function dl(s) { return s ? "animation-delay:" + s + "s" : null; }
+  function ld(cx, cy, r, d) { return ["circle", {cx: cx, cy: cy, r: r || 1.8, fill: L, "class": "ca-bl", style: dl(d)}]; }
+  function soft(c, extra) { return Object.assign({fill: c, stroke: c, "stroke-width": 3, "stroke-linejoin": "round"}, extra || {}); }
+  var ground = ["ellipse", {cx: 40, cy: 67, rx: 24, ry: 4, fill: C.sd, opacity: 0.18}];
+  /* 면 셋(윗면·옆면·앞면) 상자. kids 는 앞면 기준(가로 w · 세로 h) 좌표로 그린다. */
+  function box(w, h, d, r, kids) {
+    var s = Math.min(1, 54 / (h + d), 64 / (w + d)), W = w * s, H = h * s, D = d * s,
+        x = 40 - (W + D) / 2, y = 64 - H;
+    return [ground,
+      ["polygon", soft(C.tp, {points: [x, y, x + W, y, x + W + D, y - D, x + D, y - D].map(f).join(" ")})],
+      ["polygon", soft(C.sd, {points: [x + W, y, x + W + D, y - D, x + W + D, y + H - D, x + W, y + H].map(f).join(" ")})],
+      ["rect", {x: f(x), y: f(y), width: f(W), height: f(H), rx: f(r * s), fill: C.fr}],
+      ["g", {transform: "translate(" + f(x) + " " + f(y) + ") scale(" + f(s) + ")"}, kids]];
+  }
+  /* 도는 팬 — 날개 n 개, 보이지 않는 원으로 회전 중심을 맞춘다 */
+  function fan(cx, cy, r, col, n) {
+    n = n || 3; var d = "";
+    for (var i = 0; i < n; i++) {
+      var a = i * 2 * Math.PI / n - Math.PI / 2, b = a + Math.PI / n;
+      d += "M" + cx + " " + cy + "L" + f(cx + r * Math.cos(a)) + " " + f(cy + r * Math.sin(a))
+        + "A" + r + " " + r + " 0 0 1 " + f(cx + r * Math.cos(b)) + " " + f(cy + r * Math.sin(b)) + "Z";
+    }
+    return [["circle", {cx: cx, cy: cy, r: r + 1.5, fill: C.dk}],
+      ["g", {"class": "ca-sp"}, [["circle", {cx: cx, cy: cy, r: r, fill: "none"}], ["path", {d: d, fill: col || C.fan}]]],
+      ["circle", {cx: cx, cy: cy, r: f(r * 0.22), fill: C.yel}]];
+  }
+  function lines(d, col, w) { return ["path", {d: d, stroke: col || C.line, "stroke-width": w || 1.5, fill: "none", "stroke-linecap": "round"}]; }
+  function arcs(d, dly) { return ["path", {d: d, stroke: C.blue, "stroke-width": 2, fill: "none", "stroke-linecap": "round", "class": "ca-bl", style: dl(dly)}]; }
+  var drop = "c0 0-3 4-3 6a3 3 0 0 0 6 0c0-2-3-6-3-6z";
+
+  var I = {};
+  /* 전원 */
+  I.ups = box(30, 44, 8, 5, [["rect", {x: 4, y: 5, width: 22, height: 8, rx: 1.5, fill: C.lcd}],
+    ["path", {"class": "ca-pu", d: "M17 17l-6 9h5l-3 8 8-11h-5l3-6z", fill: C.yel}], ld(7, 39), ld(12, 39, 0, 0.3)]);
+  I.battery = box(46, 26, 7, 5, [["rect", {x: 4, y: 4, width: 38, height: 18, rx: 2, fill: C.dk}],
+    ["rect", {"class": "ca-ch", x: 5, y: 5, width: 36, height: 16, rx: 1.5, fill: L}],
+    ["path", {d: "M24 7l-4 6h4l-2 5 5-7h-4l2-4z", fill: "#fff"}]]);
+  I.generator = box(46, 30, 7, 5, fan(13, 15, 8).concat([["rect", {x: 29, y: 7, width: 12, height: 5, rx: 1, fill: C.lcd}], ld(35, 22)]));
+  I.switchgear = box(40, 48, 7, 5, [["rect", {x: 3, y: 4, width: 16, height: 40, rx: 1.5, fill: C.panel}],
+    ["rect", {x: 21, y: 4, width: 16, height: 40, rx: 1.5, fill: C.panel}],
+    ["circle", {cx: 11, cy: 13, r: 4.5, fill: "#fff", stroke: C.line}], ["circle", {cx: 29, cy: 13, r: 4.5, fill: "#fff", stroke: C.line}],
+    ["rect", {x: 16, y: 24, width: 1.6, height: 7, rx: 0.8, fill: C.dk}], ["rect", {x: 22.4, y: 24, width: 1.6, height: 7, rx: 0.8, fill: C.dk}],
+    ld(8, 38, 1.5), ld(13, 38, 1.5, 0.25), ld(27, 38, 1.5, 0.5), ld(32, 38, 1.5, 0.75)]);
+  I.pdu = box(14, 54, 5, 3, [0, 1, 2, 3, 4].reduce(function (a, i) {
+    return a.concat([["rect", {x: 3, y: 6 + i * 9.5, width: 6, height: 5, rx: 1, fill: C.dk}], ld(11.2, 8.5 + i * 9.5, 1.3, i * 0.18)]);
+  }, []));
+  I.meter = box(40, 40, 7, 5, [["circle", {cx: 20, cy: 17, r: 12, fill: "#fff", stroke: C.line, "stroke-width": 1.5}],
+    ["g", {"class": "ca-nd"}, [["circle", {cx: 20, cy: 17, r: 10, fill: "none"}], ["path", {d: "M20 17V8", stroke: C.red, "stroke-width": 2, "stroke-linecap": "round"}]]],
+    ["circle", {cx: 20, cy: 17, r: 2, fill: C.dk}], ["rect", {x: 9, y: 32, width: 22, height: 5, rx: 1, fill: C.lcd}]]);
+  /* 공조 */
+  I.crac = box(26, 52, 7, 5, [lines("M5 6h16M5 10h16"), ["rect", {x: 5, y: 16, width: 16, height: 6, rx: 1, fill: C.lcd}]]
+    .concat(fan(13, 37, 6.5, C.blue)).concat([ld(22, 48, 1.4)]));
+  I.chiller = box(48, 32, 7, 5, fan(12, 16, 8, C.blue).concat(fan(34, 16, 8, C.blue)).concat([ld(45, 28, 1.4)]));
+  I.ahu = box(52, 28, 7, 5, fan(12, 14, 8).concat([lines("M26 6h20M26 10h20M26 14h20M26 18h20M26 22h20", C.lcd, 1.8)]));
+  /* 환경 센서 */
+  I.thermo = [["ellipse", {cx: 40, cy: 71, rx: 12, ry: 3, fill: C.sd, opacity: 0.18}],
+    ["rect", {x: 34, y: 10, width: 12, height: 46, rx: 6, fill: "#fff", stroke: C.line}],
+    ["rect", {"class": "ca-me", x: 37, y: 14, width: 6, height: 44, rx: 3, fill: C.red}],
+    ["circle", {cx: 40, cy: 60, r: 9, fill: C.red}], ["circle", {cx: 37, cy: 57, r: 2.5, fill: "#fff", opacity: 0.5}]];
+  I.humidity = [["ellipse", {"class": "ca-rp", cx: 40, cy: 66, rx: 13, ry: 3, fill: C.water, opacity: 0.5}],
+    ["g", {"class": "ca-bo"}, [["path", {d: "M40 12C40 12 23 33 23 45a17 17 0 0 0 34 0C57 33 40 12 40 12z", fill: C.water}],
+      ["path", {d: "M31 43a9 9 0 0 0 4 10", stroke: "#fff", "stroke-width": 3, fill: "none", "stroke-linecap": "round", opacity: 0.6}],
+      ["text", {x: 42, y: 52, "font-size": 12, "font-weight": 600, fill: "#fff", "text-anchor": "middle"}, "%"]]]];
+  I.flow = [ground, ["rect", {x: 6, y: 24, width: 68, height: 16, rx: 3, fill: C.tp}], ["rect", {x: 6, y: 32, width: 68, height: 8, rx: 3, fill: C.fr}],
+    ["g", {"class": "ca-fl"}, [lines("M18 27l6 5-6 5M32 27l6 5-6 5M46 27l6 5-6 5", "#fff", 3)]]];
+  I.leak = [["rect", {x: 6, y: 18, width: 68, height: 12, rx: 2, fill: C.tp}], ["rect", {x: 6, y: 25, width: 68, height: 5, fill: C.fr}],
+    ["rect", {x: 33, y: 14, width: 14, height: 20, rx: 2, fill: C.fr}],
+    ["path", {"class": "ca-dp", d: "M40 35" + drop, fill: C.water}], ["path", {"class": "ca-dp", style: dl(0.65), d: "M40 35" + drop, fill: C.water}],
+    ["ellipse", {"class": "ca-pu", cx: 40, cy: 63, rx: 15, ry: 3.5, fill: C.water, opacity: 0.5}]];
+  I.smoke = [["ellipse", {cx: 40, cy: 18, rx: 22, ry: 6, fill: C.sd}], ["rect", {x: 18, y: 13, width: 44, height: 5, fill: C.sd}],
+    ["ellipse", {cx: 40, cy: 13, rx: 22, ry: 6, fill: C.tp}], ["circle", {cx: 40, cy: 13, r: 2, fill: L, "class": "ca-bl"}],
+    ["circle", {"class": "ca-rs", cx: 34, cy: 60, r: 6, fill: "#b9c4cf"}], ["circle", {"class": "ca-rs", style: dl(0.7), cx: 45, cy: 62, r: 7, fill: "#b9c4cf"}],
+    ["circle", {"class": "ca-rs", style: dl(1.4), cx: 39, cy: 58, r: 5, fill: "#b9c4cf"}]];
+  I.flame = [["ellipse", {cx: 40, cy: 68, rx: 20, ry: 3.5, fill: C.sd, opacity: 0.18}],
+    ["g", {"class": "ca-fk"}, [["path", {d: "M40 10C46 23 59 29 57 46c-1 11-9 17-17 17s-17-6-17-17c0-10 8-14 9-23 4 5 4 9 6 11 2-8 0-17 2-24z", fill: "#fa5a00"}],
+      ["path", {d: "M40 32c4 7 9 11 8 20-1 6-4 9-8 9s-8-3-8-9c0-5 4-7 5-13 2 4 3 2 3-7z", fill: "#ffcc00"}]]],
+    ["rect", {x: 25, y: 61, width: 30, height: 5, rx: 2.5, fill: "#8a6240", transform: "rotate(-7 40 63)"}]];
+  I.vibration = [ground, ["g", {"class": "ca-sh"}, box(36, 30, 7, 5, [["circle", {cx: 18, cy: 15, r: 8, fill: C.dk}], ["circle", {cx: 18, cy: 15, r: 3, fill: C.yel}],
+      ["circle", {cx: 4, cy: 4, r: 1.5, fill: C.dk}], ["circle", {cx: 32, cy: 4, r: 1.5, fill: C.dk}], ["circle", {cx: 4, cy: 26, r: 1.5, fill: C.dk}], ["circle", {cx: 32, cy: 26, r: 1.5, fill: C.dk}]]).slice(1)],
+    arcs("M9 36q-4 7 0 14M4 32q-7 11 0 22"), arcs("M71 36q4 7 0 14M76 32q7 11 0 22", 0.3)];
+  /* 보안 */
+  I.door = box(32, 56, 7, 4, [["rect", {x: 4, y: 5, width: 24, height: 51, fill: "#fff4b8"}],
+    ["g", {"class": "ca-sw"}, [["rect", {x: 4, y: 5, width: 24, height: 51, fill: C.blue}], ["circle", {cx: 24, cy: 31, r: 1.8, fill: C.yel}]]], ld(16, 2.5, 1.5)]);
+  I.camera = [ground, ["rect", {x: 60, y: 12, width: 8, height: 20, rx: 2, fill: C.sd}], ["rect", {x: 48, y: 20, width: 14, height: 4, rx: 1, fill: C.sd}],
+    ["g", {"class": "ca-pan"}, [["circle", {cx: 52, cy: 24, r: 44, fill: "none"}],
+      ["rect", {x: 14, y: 15, width: 36, height: 18, rx: 6, fill: C.fr}], ["rect", {x: 10, y: 12, width: 40, height: 6, rx: 3, fill: C.tp}],
+      ["circle", {cx: 17, cy: 24, r: 6, fill: C.lcd}], ["circle", {cx: 17, cy: 24, r: 2.5, fill: C.blue}], ld(44, 28, 1.6)]]];
+  /* 네트워크 */
+  I["switch"] = box(54, 16, 7, 4, [0, 1, 2, 3, 4, 5, 6, 7].reduce(function (a, i) {
+    return a.concat([["rect", {x: 4 + i * 5.8, y: 7, width: 4, height: 5, rx: 0.6, fill: C.dk}], ld(6 + i * 5.8, 4, 1, (i % 2) * 0.3)]);
+  }, []));
+  I.router = box(44, 18, 7, 4, [["rect", {x: 6, y: -14, width: 2.5, height: 14, rx: 1.2, fill: C.sd}], ["rect", {x: 35, y: -14, width: 2.5, height: 14, rx: 1.2, fill: C.sd}],
+    arcs("M2.5 -16a5.5 5.5 0 0 1 9.5 0M31.5 -16a5.5 5.5 0 0 1 9.5 0"), ld(8, 9), ld(13, 9, 0, 0.2), ld(18, 9, 0, 0.4),
+    ["rect", {x: 26, y: 7, width: 13, height: 4, rx: 1, fill: C.dk}]]);
+  I.firewall = box(46, 32, 7, 4, [["g", {"class": "ca-gl"}, [[3, 3, 13], [17, 3, 13], [31, 3, 12], [3, 11, 6], [10, 11, 13], [24, 11, 13], [38, 11, 5],
+      [3, 19, 13], [17, 19, 13], [31, 19, 12]].map(function (b) {
+      return ["rect", {x: b[0], y: b[1], width: b[2], height: 7, rx: 1, fill: C.brick, stroke: "#c9705a", "stroke-width": 0.8}];
+    })], ld(41, 29, 1.4)]);
+  I.server = box(28, 56, 7, 4, [0, 1, 2, 3, 4].reduce(function (a, i) {
+    return a.concat([["rect", {x: 3, y: 3 + i * 10.5, width: 22, height: 8.5, rx: 1, fill: C.sd}], ld(20, 7.2 + i * 10.5, 1.5, i * 0.16)]);
+  }, []));
+  I.storage = [ground].concat([0, 1, 2].reduce(function (a, i) {
+    var y = 60 - i * 15;
+    return a.concat([["ellipse", {cx: 40, cy: y, rx: 22, ry: 5, fill: C.sd}], ["rect", {x: 18, y: y - 9, width: 44, height: 9, fill: C.fr}],
+      ["ellipse", {cx: 40, cy: y - 9, rx: 22, ry: 5, fill: C.tp}], ld(55, y - 3, 1.5, i * 0.25)]);
+  }, []));
+  /* 산업 */
+  I.plc = box(44, 40, 7, 4, [0, 1, 2, 3].reduce(function (a, i) {
+    var x = 3 + i * 10;
+    return a.concat([["rect", {x: x, y: 3, width: 9, height: 34, rx: 1, fill: C.panel}], ["rect", {x: x, y: 28, width: 9, height: 6, fill: C.dk}],
+      ld(x + 4.5, 8, 1.3, i * 0.2), ld(x + 4.5, 13, 1.3, i * 0.2 + 0.3), ld(x + 4.5, 18, 1.3, i * 0.2 + 0.6)]);
+  }, []));
+  I.rtu = box(38, 30, 7, 4, [["rect", {x: 30, y: -16, width: 2.5, height: 16, rx: 1.2, fill: C.sd}],
+    arcs("M25.5 -18a6 6 0 0 1 11.5 0M22 -22a10 10 0 0 1 18.5 0"), ["rect", {x: 4, y: 5, width: 20, height: 7, rx: 1, fill: C.lcd}],
+    ld(29, 8.5), ld(34, 8.5, 0, 0.3), lines("M5 18h28M5 23h28", C.sd)]);
+  I.inverter = box(36, 44, 7, 4, [["rect", {x: 4, y: 5, width: 28, height: 14, rx: 1.5, fill: C.lcd}],
+    ["path", {"class": "ca-wv", d: "M6 12c3-6 5-6 8 0s5 6 8 0 5-6 8 0", stroke: C.glow, "stroke-width": 1.6, fill: "none", "stroke-dasharray": "4 2"}],
+    lines("M6 26h24M6 30h24M6 34h24", C.sd), ld(29, 39)]);
+  I.motor = [ground, ["rect", {x: 16, y: 55, width: 32, height: 6, rx: 2, fill: C.sd}],
+    ["rect", {x: 12, y: 30, width: 40, height: 26, rx: 9, fill: C.fr}], ["rect", {x: 16, y: 31, width: 32, height: 6, rx: 3, fill: C.tp}],
+    lines("M22 38v14M28 38v14M34 38v14M40 38v14", C.sd, 2), ["ellipse", {cx: 52, cy: 43, rx: 5, ry: 13, fill: C.sd}],
+    ["rect", {x: 55, y: 40, width: 10, height: 6, rx: 2, fill: "#9fb1c6"}],
+    ["g", {"class": "ca-sp"}, [["circle", {cx: 67, cy: 43, r: 7, fill: C.dk}], lines("M67 37v12M61 43h12", "#fff", 2)]]];
+  /* 구조물 */
+  I.rack = box(32, 60, 7, 4, [["rect", {x: 3, y: 3, width: 26, height: 54, rx: 1.5, fill: "#dceaf5"}],
+    lines("M6 10h20M6 17h20M6 24h20M6 31h20M6 38h20M6 45h20", C.sd, 2), ["rect", {x: 25.5, y: 25, width: 2, height: 9, rx: 1, fill: C.dk}], ld(8, 52, 1.4)]);
+  I.site = box(40, 28, 7, 3, [["polygon", soft(C.brick, {points: "-3 1 20 -15 43 1"})],
+    ["rect", {x: 17, y: 14, width: 6, height: 14, fill: C.dk}],
+    ["rect", {"class": "ca-bl", x: 5, y: 8, width: 8, height: 7, fill: C.yel}], ["rect", {"class": "ca-bl", style: dl(0.5), x: 27, y: 8, width: 8, height: 7, fill: C.yel}]]);
+  /* 포인트 종류 기본값 */
+  I.sensor = [ground, ["ellipse", {cx: 40, cy: 54, rx: 16, ry: 5, fill: C.sd}], ["rect", {x: 24, y: 46, width: 32, height: 8, fill: C.sd}],
+    ["path", {d: "M24 47a16 13 0 0 1 32 0z", fill: C.fr}], ["ellipse", {cx: 40, cy: 47, rx: 16, ry: 4, fill: C.tp}],
+    ["circle", {cx: 40, cy: 40, r: 2.5, fill: L, "class": "ca-bl"}],
+    arcs("M20 30a14 14 0 0 0 0 16M14 26a20 20 0 0 0 0 24"), arcs("M60 30a14 14 0 0 1 0 16M66 26a20 20 0 0 1 0 24", 0.3)];
+  I.digital = box(36, 24, 7, 4, [["rect", {x: 6, y: 8, width: 24, height: 9, rx: 4.5, fill: C.dk}],
+    ["circle", {"class": "ca-tg", cx: 11, cy: 12.5, r: 3.6, fill: "#fff"}], ld(31, 4, 1.2)]);
+  I.counter = box(40, 24, 7, 4, [["rect", {x: 4, y: 5, width: 32, height: 14, rx: 1.5, fill: C.lcd}],
+    ["text", {x: 7, y: 16, "font-size": 10, fill: C.glow, "font-family": "monospace"}, "012"],
+    ["text", {"class": "ca-bl", x: 26, y: 16, "font-size": 10, fill: C.glow, "font-family": "monospace"}, "8"]]);
+  return I;
+})();
+const 클레이움직임 = `.clay [class^="ca-"] { transform-box: fill-box; transform-origin: center; }
+.clay .ca-bl { animation: caBl 1.2s infinite; }
+.clay .ca-pu { animation: caPu 1.6s infinite; }
+.clay .ca-ch { animation: caCh 2.8s infinite; transform-origin: left center; }
+.clay .ca-sp { animation: caSp 1.2s linear infinite; }
+.clay .ca-sw { animation: caSw 3.2s ease-in-out infinite; transform-origin: left center; }
+.clay .ca-me { animation: caMe 3s ease-in-out infinite; transform-origin: bottom center; }
+.clay .ca-bo { animation: caBo 2s ease-in-out infinite; }
+.clay .ca-rp { animation: caRp 2s infinite; }
+.clay .ca-dp { animation: caDp 1.4s ease-in infinite; }
+.clay .ca-fk { animation: caFk .8s ease-in-out infinite; transform-origin: bottom center; }
+.clay .ca-rs { animation: caRs 2.1s ease-out infinite; }
+.clay .ca-nd { animation: caNd 2.4s ease-in-out infinite; }
+.clay .ca-sh { animation: caSh .3s linear infinite; }
+.clay .ca-fl { animation: caFl 1.2s linear infinite; }
+.clay .ca-pan { animation: caPan 4s ease-in-out infinite; }
+.clay .ca-wv { animation: caWv 1s linear infinite; }
+.clay .ca-tg { animation: caTg 2.4s ease-in-out infinite; }
+.clay .ca-gl { animation: caGl 2s ease-in-out infinite; }
+.clayOff .clay *, .clayStill * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) { .clay * { animation: none !important; } }
+@keyframes caBl { 50% { opacity: .2; } }
+@keyframes caPu { 50% { opacity: .55; transform: scale(.86); } }
+@keyframes caCh { 0% { transform: scaleX(.05); } 85%, 100% { transform: scaleX(1); } }
+@keyframes caSp { to { transform: rotate(360deg); } }
+@keyframes caSw { 0%, 15% { transform: scaleX(1); } 45%, 65% { transform: scaleX(.3); } 95%, 100% { transform: scaleX(1); } }
+@keyframes caMe { 0%, 100% { transform: scaleY(.4); } 50% { transform: scaleY(.95); } }
+@keyframes caBo { 50% { transform: translateY(-4px); } }
+@keyframes caRp { 0% { transform: scale(.3); opacity: .8; } 100% { transform: scale(1.5); opacity: 0; } }
+@keyframes caDp { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 80% { transform: translateY(18px); opacity: 1; } 100% { transform: translateY(20px); opacity: 0; } }
+@keyframes caFk { 0%, 100% { transform: none; } 33% { transform: scale(.94, 1.06) skewX(4deg); } 66% { transform: scale(1.04, .96) skewX(-3deg); } }
+@keyframes caRs { 0% { transform: translateY(0) scale(.6); opacity: .9; } 100% { transform: translateY(-26px) scale(1.3); opacity: 0; } }
+@keyframes caNd { 0%, 100% { transform: rotate(-45deg); } 50% { transform: rotate(40deg); } }
+@keyframes caSh { 25% { transform: translate(.8px, -.6px); } 75% { transform: translate(-.8px, .6px); } }
+@keyframes caFl { 0% { transform: translateX(-6px); opacity: 0; } 30%, 70% { opacity: 1; } 100% { transform: translateX(8px); opacity: 0; } }
+@keyframes caPan { 0%, 100% { transform: rotate(-10deg); } 50% { transform: rotate(10deg); } }
+@keyframes caWv { to { stroke-dashoffset: -12; } }
+@keyframes caTg { 0%, 35% { transform: translateX(0); } 50%, 85% { transform: translateX(14px); } 100% { transform: translateX(0); } }
+@keyframes caGl { 50% { opacity: .75; } }`;
+document.head.append(Object.assign(document.createElement("style"), {textContent: 클레이움직임}));
+/* 3D 종류 → 클레이 그림 키. 없는 종류(벽·기둥·바닥)는 예전 그림 그대로 */
+const 클레이키 = {rack: "rack", rack_deep: "rack", rack_net: "switch", crac: "crac", inrow: "crac", ac_stand: "crac",
+  ac_ceiling: "ahu", ac_wall: "ahu", airflow: "flow", ups: "ups", battery: "battery", panel: "switchgear",
+  s_temp: "thermo", s_humi: "humidity", s_th: "thermo", s_leak_line: "leak", s_leak_loop: "leak", s_leak_path: "leak", s_leak: "leak",
+  s_smoke: "smoke", s_heat: "flame", s_door: "door", s_power: "meter", s_vib: "vibration", s_dp: "meter", s_wind: "flow",
+  s_cctv: "camera", door: "door"};
+const 클레이적기 = (v) => String(v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+/* 그림 자료 → SVG 글. T(초)를 주면 그 순간에 멈춘 장면(움직이는 요소마다 지연을 당겨 멈춤) */
+function 클레이글(sp, T) {
+  const a = Object.assign({}, sp[1]);
+  if (T != null && String(a.class || "").startsWith("ca-")) {
+    const 지연 = parseFloat((String(a.style || "").match(/animation-delay:([\d.]+)s/) || [0, 0])[1]);
+    a.style = `animation-delay:${(지연 - T).toFixed(3)}s;animation-play-state:paused`;
+  }
+  const 속 = Object.entries(a).filter(([, v]) => v != null).map(([k, v]) => ` ${k}="${클레이적기(v)}"`).join("");
+  const 안 = typeof sp[2] === "string" ? 클레이적기(sp[2]) : (sp[2] || []).map(k => 클레이글(k, T)).join("");
+  return `<${sp[0]}${속}>${안}</${sp[0]}>`;
+}
+function 클레이SVG(키, px, T) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="4 4 72 72" width="${px}" height="${px}">`
+    + (T != null ? `<style>${클레이움직임}</style>` : "")
+    + `<g class="clay">${(CLAY[키] || CLAY.sensor).map(sp => 클레이글(sp, T)).join("")}</g></svg>`;
+}
+const 클레이장수 = 20, 클레이간격 = .25;
+const 클레이 = {그림: new Map(), 장: 0, 때: 0, 렌더ms: 0,
+  움직임: !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)};
+const 센서표판 = new Map();          // 종류 → {c 캔버스, m 재질, 키, 장들}
+function 클레이장들(키) {             // 112 px 장면 20장을 비동기로 그린다 (다 그려질 때까지는 흰 원판만)
+  if (클레이.그림.has(키)) return 클레이.그림.get(키);
+  const 장들 = []; 클레이.그림.set(키, 장들);
+  for (let i = 0; i < (클레이.움직임 ? 클레이장수 : 1); i++) {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas"); c.width = c.height = 112;
+      c.getContext("2d").drawImage(img, 0, 0, 112, 112); 장들[i] = c;
+      for (const [종류, e] of 센서표판) if (e.키 === 키) 센서표칠(종류, 클레이.장);
+      try { 더러움 = true; } catch { /* 아직 그리기 전 */ }
+    };
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(클레이SVG(키, 112, i * 클레이간격));
+  }
+  return 장들;
+}
+function 센서표칠(종류, k) {
+  const e = 센서표판.get(종류); if (!e) return;
+  const g = e.c.getContext("2d"), 장 = e.장들[k] || e.장들[0];
+  g.clearRect(0, 0, 128, 128);
+  g.fillStyle = "rgba(255,255,255,.93)"; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 색글(장비[종류].색); g.lineWidth = 5; g.stroke();
+  if (장) g.drawImage(장, 8, 8, 112, 112);
+  e.m.map.needsUpdate = true;
+}
+function 클레이돌기(now) {           // 돌기에서 부른다 — 장을 바꿨으면 true
+  if (!클레이.움직임 || !센서표판.size || !층.센서.보임 || 편집중) return false;
+  if (now - 클레이.때 < Math.max(250, 클레이.렌더ms * 5)) return false;
+  클레이.때 = now; 클레이.장 = (클레이.장 + 1) % 클레이장수;
+  for (const 종류 of 센서표판.keys()) 센서표칠(종류, 클레이.장);
+  return true;
+}
 const 센서표그림 = new Map(), 센서표 = new Map();
 const 아이콘 = {      // 128×128 캔버스, 흰 선·면. g 는 이미 흰색·굵기 7·둥근 끝으로 맞춰 둔다
   s_temp(g) { 온도계(g, 64, 22, 58); },
@@ -1282,6 +1604,13 @@ function 물결(g, x, y, 길) {
 function 센서표재질(종류) {
   if (센서표그림.has(종류)) return 센서표그림.get(종류);
   const k = 장비[종류], c = document.createElement("canvas"); c.width = c.height = 128;
+  if (클레이키[종류]) {          // 클레이 입체 아이콘 (2026-11-02) — 흰 원판 + 종류 색 테두리 위에 움직이는 그림
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.SpriteMaterial({map: t, depthTest: false, toneMapped: false});
+    센서표판.set(종류, {c, m, 키: 클레이키[종류], 장들: 클레이장들(클레이키[종류])});
+    센서표칠(종류, 클레이.장);
+    센서표그림.set(종류, m); return m;
+  }
   const g = c.getContext("2d");
   g.fillStyle = 색글(k.색); g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.fill();
   g.strokeStyle = "#fff"; g.lineWidth = 8; g.stroke();
@@ -1388,7 +1717,7 @@ function 장면맞추기() {
   for (const it of 모형.항목) 매시맞추기(it);
   for (const [id, m] of 매시들) if (!찾기id.has(id)) { scene.remove(m); 매시들.delete(id); }
   for (const id of [...고른]) if (!찾기id.has(id)) 고른.delete(id);
-  덧붙이맞추기(); 빛맞추기(); 칠하기();
+  덧붙이맞추기(); 빛맞추기(); 칠하기(); 시야그리기();
   더러움 = true;
 }
 
@@ -1426,6 +1755,106 @@ let 위에 = null;
 const 라이브 = {켬: false, 랙칠: "알람", 랙온도: new Map(), 바닥열: true, 덮어쓰기: {}, 센서: [], 값: new Map(), 랙상태: new Map(), 알람: [],
   표: new Map(), 덧: new THREE.Group(), 열판: null, 타이머: null, 시작: 0};
 scene.add(라이브.덧);
+/* ⑤ 카메라 시야 (174차, 조사서 그림 6) — 카메라 항목(점 CCTV.<카메라>)마다 바닥에 시야 부채꼴(방향 = 항목 회전, 화각 = 장비 대장,
+   거리 = 배치도 화각 거리를 방 크기로 줄인 것), 색은 카메라 상태(연결 초록·끊김 빨강·모름 회색). 벽 가림은 보지 않는다.
+   「시야 덧칠」 — 어느 부채꼴에도 중심이 안 드는 랙·공조·전력 설비를 바닥에 빨갛게. 카메라 정보는 실시간 그림·NVR·녹화·보는 설비,
+   설비 정보는 그 설비를 보는 카메라(가까운 순). var — 장면맞추기가 이 줄보다 먼저 불릴 수 있다 */
+var 시야 = {캠: new Map(), 녹화기: new Map(), 범위: 12, 덧칠: false, 그룹: new THREE.Group(), 그림타이머: null, 그림주소: null, 새로고침: null, 사각: 0, 설비수: 0};
+scene.add(시야.그룹);
+const 시야설비 = (it) => ["랙", "공조", "전력"].includes(분류(it));
+const 카메라항목 = () => (모형 && 모형.항목 || []).filter(it => it.종류 === "s_cctv" && String(it.점 || "").startsWith("CCTV."));
+const 항목카메라 = (it) => 시야.캠.get(String(it.점 || "").slice(5));
+function 시야안(c, cam, x, y) {
+  const dx = x - c.x, dy = y - c.y, d = Math.hypot(dx, dy);
+  if (d > 시야.범위) return false;
+  const f = +cam.fov || 90;
+  if (f >= 360 || d < 1e-6) return true;
+  const b = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+  return Math.abs(((b - (c.회전 || 0) + 540) % 360) - 180) <= f / 2;
+}
+function 보는설비(c) {
+  const cam = 항목카메라(c); if (!cam) return [];
+  return 모형.항목.filter(it => 시야설비(it) && 시야안(c, cam, it.x, it.y))
+    .sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y));
+}
+function 보는카메라(it) {
+  return 카메라항목().filter(c => { const cam = 항목카메라(c); return cam && 시야안(c, cam, it.x, it.y); })
+    .sort((a, b) => Math.hypot(a.x - it.x, a.y - it.y) - Math.hypot(b.x - it.x, b.y - it.y));
+}
+async function 시야받기(sid) {
+  if (!FMS켬) return;
+  try {
+    const [p, L] = await Promise.all([fms(`/api/cctv/plan?site_id=${sid}`), fms("/api/cctv/live")]);
+    if (!FMS.현장 || FMS.현장.id !== sid) return;
+    const W = (모형.방 || {}).w, pw = p.plan && p.plan.w;
+    시야.범위 = (+p.range_m || 12) * (W && pw ? W / pw : 1);
+    시야.캠 = new Map((L.cameras || []).filter(c => c.site_id === sid).map(c => [c.code, c]));
+    시야.녹화기 = new Map((L.recorders || []).map(r => [r.id, r]));
+  } catch { 시야.캠 = new Map(); }
+  시야그리기();
+  const 하나 = [...고른];
+  if (하나.length === 1) { const it = 찾기id.get(하나[0]); if (it && (it.종류 === "s_cctv" || 시야설비(it))) 정보(); }
+  if (!시야.새로고침) 시야.새로고침 = setInterval(() => { if (FMS.현장 && !document.hidden) 시야받기(FMS.현장.id); }, 15000);
+}
+function 시야그리기() {
+  if (!시야) return;
+  for (const o of [...시야.그룹.children]) { 시야.그룹.remove(o); o.traverse(x => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); }); }
+  let n = 0;
+  const R = 시야.범위, N = 24;
+  for (const c of 카메라항목()) {
+    const cam = 항목카메라(c); if (!cam) continue;
+    const f = Math.min(360, +cam.fov || 90), h = c.회전 || 0, 색 = cam.online === true ? 0x3fb950 : cam.online === false ? 0xf85149 : 0x8b949e;
+    const pos = [c.x, .03, c.y], idx = [];
+    for (let k = 0; k <= N; k++) { const a = 라(h - f / 2 + f * k / N); pos.push(c.x + R * Math.sin(a), .03, c.y - R * Math.cos(a)); }
+    for (let k = 1; k <= N; k++) idx.push(0, k, k + 1);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+    const 면 = new THREE.Mesh(g, new THREE.MeshBasicMaterial({color: 색, transparent: true, opacity: .16, side: THREE.DoubleSide, depthWrite: false}));
+    면.userData.시야 = cam.code;
+    const 테 = new THREE.LineLoop(g.clone(), new THREE.LineBasicMaterial({color: 색, transparent: true, opacity: .55}));
+    시야.그룹.add(면, 테);
+    n++;
+  }
+  const 설비 = 모형 ? 모형.항목.filter(시야설비) : [];
+  const 사각 = 설비.filter(it => !카메라항목().some(c => { const cam = 항목카메라(c); return cam && 시야안(c, cam, it.x, it.y); }));
+  if (시야.덧칠) for (const it of 사각) {
+    const gr = new THREE.Group(), pl = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(.2, it.w), Math.max(.2, it.d)),
+      new THREE.MeshBasicMaterial({color: 0xf85149, transparent: true, opacity: .45, side: THREE.DoubleSide, depthWrite: false}));
+    pl.rotation.x = -Math.PI / 2; gr.add(pl); gr.position.set(it.x, .035, it.y); gr.rotation.y = -라(it.회전 || 0);
+    시야.그룹.add(gr);
+  }
+  시야.사각 = 사각.length; 시야.설비수 = 설비.length;
+  시야.그룹.visible = !편집중;
+  const fi = $("fovInfo"), bb = $("blindBtn");
+  if (fi) {
+    fi.hidden = bb.hidden = !(FMS켬 && n);
+    fi.dataset.fans = String(n); fi.dataset.blind = String(사각.length);
+    fi.textContent = `카메라 시야 ${n}대` + (시야.덧칠 ? ` · 사각 설비 ${사각.length} / ${설비.length}` : "");
+    bb.classList.toggle("켬", 시야.덧칠);
+  }
+  더러움 = true;
+}
+function 카메라그림(cam, img) {
+  clearInterval(시야.그림타이머);
+  let 받는중 = false;
+  const 한번 = async () => {
+    if (!img.isConnected) { clearInterval(시야.그림타이머); return; }
+    if (받는중 || document.hidden || innerWidth === 0) return;   // 앞 그림이 아직이면 쌓지 않는다
+    받는중 = true;
+    try {
+      if (!FMS.토큰) await 토큰받기();
+      const 받기 = () => fetch(`/api/cctv/cameras/${cam.id}/snapshot`, {cache: "no-store", headers: {Authorization: "Bearer " + FMS.토큰}});
+      let r = await 받기();
+      if (r.status === 401) { FMS.토큰 = null; await 토큰받기(); r = await 받기(); }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const bl = await r.blob();                                  // 그림 — blob 으로 (데모 관제 화면의 가짜 응답도 blob 만 준다)
+      const old = 시야.그림주소; 시야.그림주소 = URL.createObjectURL(bl);
+      img.src = 시야.그림주소; if (old) URL.revokeObjectURL(old);
+    } catch (e) { img.alt = "그림 없음 — " + e.message; }
+    받는중 = false;
+  };
+  한번(); 시야.그림타이머 = setInterval(한번, 3000);
+}
 const 상태재질 = {
   주의: new THREE.MeshStandardMaterial({color: 0xcfa62a, roughness: .75}),
   경고: new THREE.MeshStandardMaterial({color: 0xe0702c, roughness: .75}),
@@ -1773,7 +2202,90 @@ function 라이브그리기() {
   }
   랙온도맞추기(); 감지선맞추기(); 열판맞추기(); 칠하기(); 알람그리기();
   if (고른.size === 1) 정보();
+  평면2d그리기();
 }
+/* ── 2D 열지도 (137차) ────────────────────────────────────────────────────────
+   왜 (2026-10-19, 타업체 9곳 비교 → 사용자 「그림 배치도 유지 + 새 보기 추가」)
+     3D 는 한눈에 몇 열 몇 번째 랙이 뜨거운지 읽기 어렵다. Device42 룸 레이아웃·Nlyte 평면 덧칠처럼 위에서 본 평면에
+     랙 칸을 색으로 칠한다. 값은 3D 와 같은 것(라이브.랙온도·랙상태·값)을 쓴다 — 두 벌로 셈하지 않는다.
+   글자는 SVG 안에 미터 단위로(viewBox = 방 크기, 비율 고정) — 늘림이 없어 찌그러지지 않는다. */
+const 평면2d = {켬: false};
+function 평면2d켜기(켬) {
+  평면2d.켬 = 켬; $("plan2d").hidden = !켬; $("v_2d").classList.toggle("켬", 켬);
+  // 148차 사용자 「2D 열지도를 선택하면 3D 라고 안 바뀐다」 — 켜져 있으면 돌아갈 곳(3D)을 적는다
+  $("v_2d").textContent = 켬 ? "3D 보기" : "2D 열지도";
+  $("v_2d").title = 켬 ? "평면을 닫고 3D 로 돌아갑니다" : "위에서 본 평면에 랙 칸을 흡기 온도·알람 색으로 칠합니다 — 범례와 덧칠 종류 (137차, Device42·Nlyte 평면 덧칠)";
+  document.body.classList.toggle("p2", 켬);
+  if (켬 && !라이브.켬) 라이브켜기(true);          // 값이 있어야 칠한다 — 서버판은 FMS 값, 파일로 연 것은 미리보기 값
+  if (켬) 평면2d그리기();
+}
+function 평면2d그리기() {
+  if (!평면2d.켬) return;
+  const g = $("p2svg"), R = 방(), NS = "http://www.w3.org/2000/svg", 모드 = $("p2_mode").value;
+  const mk = (t, a = {}, 글) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (글 != null) e.textContent = 글; return e; };
+  const 다각 = (it) => 모서리(it).map(([x, y]) => x.toFixed(3) + "," + y.toFixed(3)).join(" ");
+  const 어둠 = document.documentElement.dataset.theme === "dark";
+  g.setAttribute("viewBox", `-0.3 -0.3 ${R.w + .6} ${R.d + .6}`);
+  g.replaceChildren();
+  g.appendChild(mk("rect", {x: 0, y: 0, width: R.w, height: R.d, fill: 어둠 ? "#111827" : "#f8fafc", stroke: "#64748b", "stroke-width": .05}));
+  for (const it of 모형.항목) if (it.종류 === "floor") g.appendChild(mk("polygon", {points: 다각(it), fill: 어둠 ? "#1f2937" : "#eef2f7"}));
+  // 바닥 온도 분포 — 3D 바닥에 까는 그림(열판)을 그대로 깐다
+  if ($("p2_floor").checked && 라이브.열판 && 라이브.열판.material.map.image) {
+    const im = mk("image", {x: 0, y: 0, width: R.w, height: R.d, preserveAspectRatio: "none", opacity: .85});
+    im.setAttribute("href", 라이브.열판.material.map.image.toDataURL()); g.appendChild(im);
+  }
+  for (const it of 모형.항목) if (it.종류 === "wall" || it.종류 === "col") g.appendChild(mk("polygon", {points: 다각(it), fill: "#475569"}));
+  for (const it of 모형.항목) if (it.종류 === "door") g.appendChild(mk("polygon", {points: 다각(it), fill: "#f59e0b"}));
+  // 148차 사용자 「덧칠을 바꾸어도 아무런 반응이 없다」 — 값·알람이 없는 현장(대전)은 세 덧칠이 모두 같은 회색에 같은 안내였다.
+  // 알람 덧칠은 센서가 있고 정상인 칸을 초록으로, 칠하지 않음은 값과 무관한 밝은 칸으로 — 고를 때마다 무엇이 바뀌었는지 보이게
+  let 칠한 = 0, 센서칸 = 0;
+  const 값없음 = 어둠 ? "#6b7280" : "#cbd5e1", 무덧칠 = 어둠 ? "#94a3b8" : "#e5e7eb";
+  for (const it of 모형.항목) {
+    const 랙 = it.종류 === "rack" || it.종류 === "rack_net";
+    if (!랙 && !["crac", "ups", "battery"].includes(it.종류)) continue;
+    const t = 라이브.랙온도.get(it.id), 단 = 라이브.랙상태.get(it.id) || (라이브.값.get(it.id) || {}).단계;
+    if (단) 센서칸++;
+    let fill = 값없음;
+    if (모드 === "없음") fill = 랙 ? 무덧칠 : (어둠 ? "#334155" : "#e2e8f0");
+    else if (모드 === "온도" && 랙 && t != null) { const [r, gg, b] = 열색(t); fill = `rgb(${r | 0},${gg | 0},${b | 0})`; 칠한++; }
+    else if (모드 === "알람" && 단 && 단 !== "정상") { fill = 상태색[단]; 칠한++; }
+    else if (모드 === "알람" && 단 === "정상") fill = 상태색.정상;
+    else if (!랙) fill = 어둠 ? "#334155" : "#e2e8f0";
+    const b = 범위(it);
+    const e = mk("rect", {class: "rk" + (고른.has(it.id) ? " on" : ""), x: b.x0, y: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0, fill});
+    e.appendChild(mk("title", {}, `${it.id} ${it.이름 || ""}${t != null ? ` · 흡기 ${t.toFixed(1)}℃` : ""}${단 && 단 !== "정상" ? ` · ${단}` : ""}`));
+    e.addEventListener("click", () => { 고르기([it.id]); 평면2d그리기(); });
+    g.appendChild(e);
+    const 짧 = Math.min(b.x1 - b.x0, b.y1 - b.y0), 폰 = Math.max(.16, Math.min(.32, 짧 * .45));
+    const 글 = !랙 ? it.id : 모드 === "온도" && t != null ? t.toFixed(1) : null;
+    if (글) g.appendChild(mk("text", {x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 + 폰 * .35, "font-size": 폰, "text-anchor": "middle",
+      fill: !랙 ? (어둠 ? "#e5e7eb" : "#1f2937") : "#0f172a", "font-weight": 600}, 글));
+  }
+  // 열 이름 — 같은 「열」 의 랙 가장자리 위에
+  for (const e of 열목록().values()) {
+    const rs = e.ids.map(id => 찾기id.get(id)).filter(Boolean); if (!rs.length) continue;
+    const bs = rs.map(범위), x0 = Math.min(...bs.map(b => b.x0)), x1 = Math.max(...bs.map(b => b.x1)), y0 = Math.min(...bs.map(b => b.y0));
+    g.appendChild(mk("text", {x: (x0 + x1) / 2, y: y0 - .12, "font-size": .3, "text-anchor": "middle", fill: 어둠 ? "#cbd5e1" : "#334155", "font-weight": 700}, e.이름));
+  }
+  // 범례
+  const lg = $("p2_lg"); lg.replaceChildren();
+  if (모드 === "온도") {
+    const i = document.createElement("i");
+    i.style.background = `linear-gradient(90deg, ${열색표.map(([v, c]) => `rgb(${c.join(",")}) ${((v - 18) / 16 * 100).toFixed(0)}%`).join(", ")})`;
+    lg.append("18℃", i, "34℃ (흡기)");
+  } else if (모드 === "알람") {
+    for (const 단 of ["정상", "주의", "경고", "위험", "정지"]) { const em = document.createElement("em"), b = document.createElement("b"); b.style.background = 상태색[단]; em.append(b, 단); lg.append(em); }
+  }
+  if (모드 !== "없음") { const em = document.createElement("em"), b = document.createElement("b"); b.style.background = 값없음; em.append(b, 모드 === "온도" ? "값 없음" : "센서 없음"); lg.append(em); }
+  $("p2_note").textContent = !라이브.켬 ? "값이 아직 없습니다"
+    : 모드 === "없음" ? "덧칠하지 않습니다 — 칸 배치만 봅니다"
+    : 칠한 ? `칠한 칸 ${칠한}개 · 칸을 누르면 왼쪽 아래에 정보`
+    : 모드 === "온도" ? "흡기 온도 값이 있는 랙이 없습니다 — 배치 편집에서 랙에 온도 센서를 붙이면 칠해집니다"
+    : 센서칸 ? `알람이 난 칸이 없습니다 — 센서가 붙은 ${센서칸}칸 모두 정상(초록)` : "센서가 붙은 칸이 없습니다 — 배치 편집에서 설비·랙에 FMS 센서를 붙이면 알람 색이 칠해집니다";
+}
+$("p2_mode").onchange = 평면2d그리기;
+$("p2_floor").onchange = 평면2d그리기;
+
 function 알람그리기() {
   const el = $("alarms"); el.hidden = !라이브.켬; if (!라이브.켬) return;
   const 수 = (단) => 라이브.알람.filter(a => a.v.단계 === 단).length;
@@ -1920,7 +2432,7 @@ function 재생닫기() {
 }
 $("t_heat").onchange = e => { 라이브.바닥열 = e.target.checked; if (라이브.열판) 라이브.열판.visible = 라이브.바닥열; 더러움 = true; };
 function 라이브깜빡(now) {
-  const p = .5 + .5 * Math.sin(now / 230);
+  const p = Math.floor(now / 500) % 2 ? 1 : .15;          // 0.5초마다 켜고 끄는 깜빡임 — 초당 두 번만 그린다 (174차)
   상태재질.위험.emissiveIntensity = .3 + 1.2 * p;
   for (const m of 칠한위험) m.emissiveIntensity = .25 + .9 * p;
   /* px → 스프라이트 크기. 이상 값(위험·경고·주의·미수신)은 늘 크게 — 이름 줄까지.
@@ -2015,7 +2527,7 @@ if (FMS켬) {
       FMS.토큰 = m.token; FMS.권한 = m.permissions || {}; FMS.사용자 = m.user || "";
       const w = FMS.기다림; FMS.기다림 = []; w.forEach(f => f());
       if (!FMS.시작됨) FMS.준비 = FMS시작(m.site_id);
-    } else if (m.fms3d === "focus") FMS로가기(m.site_id, m.point_id);
+    } else if (m.fms3d === "focus") FMS로가기(m.site_id, m.point_id, m.item_point);
   });
 }
 const 등급단계 = (lv) => lv == null ? "정상" : lv <= 2 ? "위험" : lv === 3 ? "경고" : lv === 4 ? "주의" : "정상";
@@ -2194,7 +2706,9 @@ async function 현장열기(sid) {
   let m = b.layout, 출처 = "서버";
   if (!m) { m = await 기본배치(s.code); 출처 = "기본"; if (지났나()) return; }
   if (!m) { m = 깊은복사(원본); 출처 = "예시"; }
+  const 더한 = await 카메라보태기(m, s.id); if (지났나()) return;
   try { m = 모형검사(JSON.stringify(m)); } catch (e) { 알림("배치를 그릴 수 없습니다", e.message); return; }
+  if (더한) 상태(`장비 대장의 CCTV 카메라 ${더한}대를 배치도 자리로 더했습니다 — 저장하면 이 배치에 남습니다`);
   FMS.출처 = 출처; FMS.저장정보 = b;
   const 켜져 = 라이브.켬; if (켜져) 라이브켜기(false);
   현재.이름 = null; 현재.파일 = null;
@@ -2203,14 +2717,45 @@ async function 현장열기(sid) {
   if (지났나()) return;
   FMS출처표시(); 층체크그리기(); 고르기([]); 정보(); FMS목록그리기();
   if (!편집중) { 시점들.iso(); 라이브켜기(true); }
+  시야받기(s.id);                                             // ⑤ 카메라 시야 (174차)
+}
+/* 장비 대장의 카메라 중 배치에 없는 것을 배치도 자리(현장 평면 m)를 방 크기로 줄여 더한다 (164차).
+   저장해 둔 배치가 카메라를 넣기 전 것이면(대전센터) 카메라가 안 보였다 — 대장이 기준이고, 사람이 놓은 자리는 그대로 둔다 */
+async function 카메라보태기(m, sid) {
+  let b;
+  try { b = await fms(`/api/cctv/plan?site_id=${sid}`); } catch { return 0; }
+  const W = (m.방 || {}).w, D = (m.방 || {}).d, pw = b.plan && b.plan.w, pd = b.plan && b.plan.d;
+  if (!W || !D || !pw || !pd) return 0;
+  m.항목 = m.항목 || [];
+  const 있음 = new Set(m.항목.map(x => x.점).filter(Boolean)), 아이디 = new Set(m.항목.map(x => x.id));
+  let n = 0;
+  for (const c of b.cameras || []) {
+    const 점 = "CCTV." + c.code;
+    if (있음.has(점) || c.x == null || c.y == null) continue;
+    let id = "CAM-" + c.code; while (아이디.has(id)) id += "_";
+    아이디.add(id);
+    m.항목.push({id, 종류: "s_cctv", 이름: c.name, x: +Math.min(W - .4, Math.max(.4, c.x / pw * W)).toFixed(3),
+                 y: +Math.min(D - .4, Math.max(.4, c.y / pd * D)).toFixed(3), w: .12, d: .2, h: .12, z0: 3.2,
+                 회전: Math.round(c.heading || 0), 점});
+    n++;
+  }
+  return n;
 }
 /* 알람·배치도의 「3D」 — 그 현장으로 가서 그 센서가 붙은 항목을 보여 준다 */
-async function FMS로가기(sid, pid) {
+async function FMS로가기(sid, pid, 점코드) {
   if (!FMS.시작됨) return;
   /* 3D 를 처음 열면서 오면 현장 목록·배치·센서를 다 읽은 뒤에 간다 (96차). 전에는 읽는 중에 와서
      현장 목록이 비어 「그 센서로 가기」 가 버려졌다 — 3D 화면만 뜨고 시선은 그대로 */
   await FMS.준비;
   if (sid != null && (!FMS.현장 || FMS.현장.id !== sid)) await 현장열기(sid);
+  if (점코드) {                                  // CCTV 크게 보기의 「3D」 (164차) — 센서가 아니라 항목의 코드로 간다
+    if (편집중) 모드(false);
+    const it = 모형.항목.find(x => x.점 === 점코드);
+    if (!it) { 알림("이 카메라는 3D 배치에 없습니다", `${점코드} — 상단 CCTV > 배치도 에서 자리를 정하면 3D 에도 나옵니다.`); return; }
+    if (!라이브.켬) 라이브켜기(true);
+    고르기([it.id]); 가까이([it.id], 2.6); 정보();
+    return;
+  }
   if (pid == null) return;
   if (편집중) 모드(false);
   if (!라이브.켬) 라이브켜기(true);
@@ -2245,7 +2790,7 @@ async function FMS저장() {
 }
 /* 편집기의 「FMS 센서」 판 — 이 현장 센서 목록. 끌어 놓거나 누른 뒤 자리를 누르면 코드가 붙은 장비가 놓인다 */
 const 유형장비 = {TEMP: "s_temp", HUMIDITY: "s_humi", WATER_LEAK: "s_leak", SMOKE: "s_smoke", WIND: "s_wind", DOOR: "s_door",
-  CRAC: "crac", UPS: "ups", SWITCHGEAR: "s_power", POWER: "s_power", VIBRATION: "s_vib", PRESSURE: "s_dp", CCTV: "s_cctv"};
+  CRAC: "crac", UPS: "ups", SWITCHGEAR: "s_power", POWER: "s_power", VIBRATION: "s_vib", PRESSURE: "s_dp", CCTV: "s_cctv", CCTV_CAM: "s_cctv"};   // 160차 — CCTV 상태 감시 카메라 신호
 const 묶는유형 = new Set(["CRAC", "UPS", "WATER_LEAK"]);   // 장치 하나에 센서가 여럿 — 앞부분(CRAC-01) 하나로 놓는다
 function 장치앞(tag) {            // 숫자가 든 첫 마디까지 — CRAC-01.TEMP → CRAC-01, DJ.CRAC01.TEMP → DJ.CRAC01 (75차). 마지막 마디면 없음
   const 마디 = tag.split("."), i = 마디.findIndex(x => /\d/.test(x));
@@ -2297,6 +2842,18 @@ function FMS목록그리기() {
 }
 
 /* ── 보기 모드 정보 창 ─────────────────────────────────────────────── */
+/* 182차 사용자 「표시내역이 겹친다」 — 정보 창(왼쪽 아래)이 길어지면(카메라 그림) 왼쪽 위 판을 덮었다.
+   왼쪽 위 판 아래 남은 높이까지만 쓰고(넘치면 창 안에서 내려 보기), 남은 높이가 너무 작으면 판 오른쪽으로 비켜 선다. */
+function 정보자리() {
+  const info = $("info"), ui = $("ui");
+  if (!info || !ui) return;
+  const a = ui.getBoundingClientRect(), 보임 = a.height > 0 && getComputedStyle(ui).display !== "none";
+  const 위 = 보임 ? a.bottom + 10 : 14, 남음 = innerHeight - 위 - 14;
+  if (!보임 || 남음 >= 240) { info.style.left = "14px"; info.style.maxHeight = (보임 ? 남음 : innerHeight - 28) + "px"; }
+  else { info.style.left = Math.round(a.right + 10) + "px"; info.style.maxHeight = (innerHeight - 28) + "px"; }
+}
+addEventListener("resize", 정보자리);
+if (window.ResizeObserver) new ResizeObserver(정보자리).observe(document.getElementById("ui"));
 function 정보() {
   const el = $("info");
   el.replaceChildren();
@@ -2319,9 +2876,37 @@ function 정보() {
     if (it.제조사 || it.모델) 줄("제조사·모델", [it.제조사, it.모델].filter(Boolean).join(" ") + (모델쓰나(it) ? " (실사 모델)" : ""));
     if (it.점) 줄("센서 코드", it.점);
     if (it.메모) 줄("메모", it.메모);
-    for (const [k, v, 단] of 라이브줄(it)) 줄(k, 엘("b", {style: `color:${상태색[단] || "inherit"}`, textContent: v}));
+    for (const [k, v, 단] of 라이브줄(it))                        // 182차 — 센서 이름 앞의 설비 이름(「정문 출입구 영상 신호」)은 떼고 「영상 신호」 만
+      줄(it.이름 && k.startsWith(it.이름 + " ") ? k.slice(it.이름.length + 1) : k, 엘("b", {style: `color:${상태색[단] || "inherit"}`, textContent: v}));
+    const cam = it.종류 === "s_cctv" ? 항목카메라(it) : null;
+    if (cam) {                                                   // ⑤ 카메라 정보 (174차)
+      const rc = 시야.녹화기.get(cam.recorder_id) || {};
+      줄("방향·화각", `${it.회전 || 0}° · ${cam.fov || 90}°`);
+      줄("NVR", cam.recorder_id ? `${rc.name || rc.code || "녹화장치"} ch ${cam.channel}` : "직접 연결");
+      줄("상태", 엘("b", {style: `color:${cam.online === true ? "#3fb950" : cam.online === false ? "#f85149" : "inherit"}`,
+        textContent: cam.online === true ? "영상 수신" : cam.online === false ? "영상 수신 없음" : "확인 불가"}));
+      줄("녹화", cam.recording ? "녹화 중" : "중단");
+      const 봄 = 보는설비(it);
+      줄("보는 설비", 봄.length ? 봄.slice(0, 12).map(x => x.id).join(", ") + (봄.length > 12 ? ` 외 ${봄.length - 12}` : "") : "없음");
+      const img = 엘("img", {class: "camLive", alt: cam.name});
+      img.style.cssText = "width:100%;margin-top:6px;border-radius:4px;background:#0b0d10;aspect-ratio:16/9;object-fit:cover";
+      el.append(img); 카메라그림(cam, img);
+      const 큰 = 엘("button", {textContent: "영상 크게 · 재생"});
+      큰.addEventListener("click", () => parent.postMessage({fms3d: "camera", code: cam.code, site_id: FMS.현장 ? FMS.현장.id : null}, FMS보낼곳));
+      el.append(큰);
+    } else if (FMS켬 && 시야설비(it) && 시야.캠.size) {          // 이 설비를 보는 카메라 — 가까운 순
+      const 봄 = 보는카메라(it);
+      줄("보는 카메라", 봄.length ? "" : "없음 (사각)");
+      for (const c of 봄.slice(0, 6)) {
+        const b = 엘("button", {textContent: `${c.점.slice(5)} ${c.이름 || ""}`});
+        b.addEventListener("click", () => { 고르기([c.id]); 정보(); 가까이([c.id]);
+          parent.postMessage({fms3d: "camera", code: c.점.slice(5), site_id: FMS.현장 ? FMS.현장.id : null}, FMS보낼곳); });
+        el.append(b);
+      }
+    }
   }
   el.append(엘("div", {class: "sub", style: "margin-top:4px", textContent: "F 를 누르면 가까이 갑니다."}));
+  정보자리();
 }
 
 /* ── 시점 옮기기 ────────────────────────────────────────────────────── */
@@ -2412,6 +2997,9 @@ addEventListener("pointerup", e => {
   if (누름.버튼 === 0 && Math.hypot(e.clientX - 누름.x, e.clientY - 누름.y) < 5) {
     const it = 집기3D(화면좌표(e));
     고르기(it ? [it.id] : []); 정보();
+    // CCTV 카메라를 누르면 관제 화면이 그 카메라 영상 창을 연다 (164차)
+    if (it && it.종류 === "s_cctv" && FMS켬 && String(it.점 || "").startsWith("CCTV."))
+      parent.postMessage({fms3d: "camera", code: it.점.slice(5), site_id: FMS.현장 ? FMS.현장.id : null}, FMS보낼곳);
   }
   누름 = null;
 });
@@ -2499,6 +3087,8 @@ function 찾기(글) {
   for (const it of 모형.항목) if (후보.has(it.id.toUpperCase())) return [it.id];
   return [];
 }
+$("blindBtn").addEventListener("click", () => { 시야.덧칠 = !시야.덧칠; 시야그리기();
+  if (시야.덧칠) 상태(`어느 카메라에도 안 보이는 설비 ${시야.사각}개를 빨갛게 덧칠했습니다 (벽 가림은 보지 않습니다)`); });
 $("find").addEventListener("keydown", e => {
   if (e.key !== "Enter") return;
   const ids = 찾기(e.target.value);
@@ -2534,6 +3124,7 @@ $("t_wallhi").addEventListener("change", e => {
 });
 $("v_iso").onclick = 시점들.iso;
 $("v_top").onclick = 시점들.top;
+$("v_2d").onclick = () => 평면2d켜기(!평면2d.켬);
 $("v_eye").onclick = 시점들.eye;
 
 /* ── 시점 조절 게이지 ───────────────────────────────────────────────── */
@@ -3129,7 +3720,8 @@ function 라이브러리그리기() {
         onclick: () => { 놓을종류 = 놓을종류 === 키 ? null : 키; 놓을점 = null; 라이브러리켬(); 커서();
           상태(놓을종류 ? `「${k.이름}」 을 놓을 자리를 누르세요 (Esc = 그만두기)` : ""); },
         ondragstart: e => { e.dataTransfer.setData("text/fms-equip", 키); e.dataTransfer.effectAllowed = "copy"; }},
-        엘("span", {class: "견", style: `background:${색글(k.색)};color:${어두운가(k.색) ? "#fff" : "#333"}`, textContent: k.글자 || ""}),
+        클레이키[키] ? 엘("span", {class: "견 클레이", innerHTML: 클레이SVG(클레이키[키], 22)})     // 클레이 아이콘 (2026-11-02)
+          : 엘("span", {class: "견", style: `background:${색글(k.색)};color:${어두운가(k.색) ? "#fff" : "#333"}`, textContent: k.글자 || ""}),
         엘("span", {class: "글"}, 엘("b", {textContent: k.이름}), 엘("span", {textContent: 치수}))));
     }
     안.append(판);
@@ -3460,15 +4052,19 @@ function 덧그리기() {
       continue;
     }
     const [a, b] = 평면에서화면(it.x, it.y), r = 표시반지름(it);
-    og.fillStyle = 색글(k.색); og.beginPath(); og.arc(a, b, r, 0, Math.PI * 2); og.fill();
-    og.strokeStyle = "#fff"; og.lineWidth = 2; og.stroke();
+    const 클장 = 클레이키[it.종류] && 클레이장들(클레이키[it.종류])[0];     // 클레이 아이콘 첫 장 (2026-11-02) — 편집 평면은 멈춘 그림
+    og.fillStyle = 클장 ? "#fff" : 색글(k.색); og.beginPath(); og.arc(a, b, r, 0, Math.PI * 2); og.fill();
+    og.strokeStyle = 클장 ? 색글(k.색) : "#fff"; og.lineWidth = 2; og.stroke();
     if (it.회전) {                      // 방향이 있는 센서(CCTV 등)는 돌린 쪽에 작은 삼각형
       const 각 = 라(it.회전 - 90), ex = a + Math.cos(각) * (r + 6), ey = b + Math.sin(각) * (r + 6);
       og.beginPath(); og.moveTo(ex, ey); og.lineTo(a + Math.cos(각 - .35) * r, b + Math.sin(각 - .35) * r);
       og.lineTo(a + Math.cos(각 + .35) * r, b + Math.sin(각 + .35) * r); og.closePath(); og.fillStyle = 색글(k.색); og.fill();
     }
-    og.font = `bold ${k.글자.length > 1 ? 10 : 12}px 'Malgun Gothic', sans-serif`;
-    og.fillStyle = "#fff"; og.fillText(k.글자, a, b + .5);
+    if (클장) og.drawImage(클장, a - r * .9, b - r * .9, r * 1.8, r * 1.8);
+    else {
+      og.font = `bold ${k.글자.length > 1 ? 10 : 12}px 'Malgun Gothic', sans-serif`;
+      og.fillStyle = "#fff"; og.fillText(k.글자, a, b + .5);
+    }
   }
   // 이름 — 넉넉히 확대했을 때만
   if (평면.배율 >= 40) {
@@ -4312,6 +4908,8 @@ function 설비이름맞추기(now) {
   return 바뀜;
 }
 function 돌기(now) {
+  // 관제 화면이 3D 를 숨기면(다른 메뉴) 그리지 않는다 — 숨은 3D 가 계속 그려 관제 화면이 느려졌다 (174차)
+  if (!renderer.xr.isPresenting && (document.hidden || innerWidth === 0 || innerHeight === 0)) { 더러움 = true; return; }
   now = now ?? performance.now();
   if (설비이름맞추기(now)) 더러움 = true;
   const 걸었나 = 걷기진행(now);
@@ -4321,11 +4919,17 @@ function 돌기(now) {
     const it = 집기3D(볼점), id = it ? it.id : null; 볼점 = null;
     if (id !== 위에) { 위에 = id; cv.classList.toggle("over", !!id); 칠하기(); }
   }
-  if (라이브.켬 && !편집중) { 라이브깜빡(now); 더러움 = true; }
+  // 실시간 값은 깜빡임(초당 2번)만 다시 그린다 — 매 화면(초당 60번) 그리면 그래픽 카드 없는 PC 에서 관제 화면이 멈춘 듯 느렸다 (174차).
+  // 시점을 움직이는 동안은 값 표 크기를 맞추려 매번 그린다
+  if (라이브.켬 && !편집중 && (날았나 || 움직였나 || 걸었나 || now - (라이브.깜빡때 || 0) >= 500)) { 라이브깜빡(now); 라이브.깜빡때 = now; 더러움 = true; }
+  if (클레이돌기(now)) 더러움 = true;      // 센서표 클레이 아이콘 장 바꾸기 (2026-11-02)
   if (날았나 || 움직였나 || 더러움 || 걸었나 || renderer.xr.isPresenting || 걷기.녹화) {
     해.castShadow = !(편집중 && 편집보기 === "2D");      // 평면에서는 그림자가 자리를 헷갈리게 한다
     부품거리맞추기();
+    const 그린때 = performance.now();
     renderer.render(scene, 지금카메라());
+    클레이.렌더ms = performance.now() - 그린때;
+    window.__r3d그림 = true;           // 189차 — 첫 화면을 그렸다
     if (!편집중) { 미니맵(); 게이지맞추기(); } else if (편집보기 === "3D") 상태줄();
     더러움 = false;
   }
