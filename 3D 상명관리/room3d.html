@@ -1395,8 +1395,17 @@ var CLAY = (function () {
       ["circle", {cx: 4, cy: 4, r: 1.5, fill: C.dk}], ["circle", {cx: 32, cy: 4, r: 1.5, fill: C.dk}], ["circle", {cx: 4, cy: 26, r: 1.5, fill: C.dk}], ["circle", {cx: 32, cy: 26, r: 1.5, fill: C.dk}]]).slice(1)],
     arcs("M9 36q-4 7 0 14M4 32q-7 11 0 22"), arcs("M71 36q4 7 0 14M76 32q7 11 0 22", 0.3)];
   /* 보안 */
-  I.door = box(32, 56, 7, 4, [["rect", {x: 4, y: 5, width: 24, height: 51, fill: "#fff4b8"}],
-    ["g", {"class": "ca-sw"}, [["rect", {x: 4, y: 5, width: 24, height: 51, fill: C.blue}], ["circle", {cx: 24, cy: 31, r: 1.8, fill: C.yel}]]], ld(16, 2.5, 1.5)]);
+  /* 출입문 (2026-11-03 사용자 「문이 열렸다 닫혔다 하는데 오해의 소지 — 닫혔을 때는 닫힌, 열렸을 때는 열린 애니메이션」).
+     상태를 모르면(door) 닫힌 문을 움직임 없이, 닫힘(door_closed)은 잠금쇠가 딸깍·초록 LED,
+     열림(door_open)은 문이 반쯤 열린 채 살짝 흔들리고 안쪽 빛·주황 LED 가 깜빡인다. 고르는 것은 icon() 의 state */
+  var leaf = [["rect", {x: 4, y: 5, width: 24, height: 51, fill: C.blue}], ["circle", {cx: 24, cy: 31, r: 1.8, fill: C.yel}]];
+  function door(kids) { return box(32, 56, 7, 4, [["rect", {x: 4, y: 5, width: 24, height: 51, fill: "#fff4b8"}]].concat(kids)); }
+  I.door = door(leaf);
+  I.door_closed = door(leaf.concat([["rect", {x: 18.5, y: 34, width: 7, height: 6, rx: 1.2, fill: C.dk}],
+    ["path", {"class": "ca-lk", d: "M20 34v-2.4a2 2 0 0 1 4 0V34", stroke: C.dk, "stroke-width": 1.4, fill: "none"}],
+    ["circle", {"class": "ca-pu", cx: 16, cy: 2.5, r: 1.5, fill: "#69db7c"}]]));
+  I.door_open = door([["rect", {"class": "ca-gl", x: 4, y: 5, width: 24, height: 51, fill: "#ffe066"}],
+    ["g", {"class": "ca-aj"}, leaf], ["circle", {"class": "ca-bl", cx: 16, cy: 2.5, r: 1.5, fill: "#ffa94d"}]]);
   I.camera = [ground, ["rect", {x: 60, y: 12, width: 8, height: 20, rx: 2, fill: C.sd}], ["rect", {x: 48, y: 20, width: 14, height: 4, rx: 1, fill: C.sd}],
     ["g", {"class": "ca-pan"}, [["circle", {cx: 52, cy: 24, r: 44, fill: "none"}],
       ["rect", {x: 14, y: 15, width: 36, height: 18, rx: 6, fill: C.fr}], ["rect", {x: 10, y: 12, width: 40, height: 6, rx: 3, fill: C.tp}],
@@ -1460,7 +1469,8 @@ const 클레이움직임 = `.clay [class^="ca-"] { transform-box: fill-box; tran
 .clay .ca-pu { animation: caPu 1.6s infinite; }
 .clay .ca-ch { animation: caCh 2.8s infinite; transform-origin: left center; }
 .clay .ca-sp { animation: caSp 1.2s linear infinite; }
-.clay .ca-sw { animation: caSw 3.2s ease-in-out infinite; transform-origin: left center; }
+.clay .ca-aj { animation: caAj 2.6s ease-in-out infinite; transform-origin: left center; }
+.clay .ca-lk { animation: caLk 2.4s ease-in-out infinite; }
 .clay .ca-me { animation: caMe 3s ease-in-out infinite; transform-origin: bottom center; }
 .clay .ca-bo { animation: caBo 2s ease-in-out infinite; }
 .clay .ca-rp { animation: caRp 2s infinite; }
@@ -1480,7 +1490,8 @@ const 클레이움직임 = `.clay [class^="ca-"] { transform-box: fill-box; tran
 @keyframes caPu { 50% { opacity: .55; transform: scale(.86); } }
 @keyframes caCh { 0% { transform: scaleX(.05); } 85%, 100% { transform: scaleX(1); } }
 @keyframes caSp { to { transform: rotate(360deg); } }
-@keyframes caSw { 0%, 15% { transform: scaleX(1); } 45%, 65% { transform: scaleX(.3); } 95%, 100% { transform: scaleX(1); } }
+@keyframes caAj { 0%, 100% { transform: scaleX(.34); } 50% { transform: scaleX(.46); } }
+@keyframes caLk { 0%, 60%, 100% { transform: translateY(0); } 75% { transform: translateY(-1.2px); } }
 @keyframes caMe { 0%, 100% { transform: scaleY(.4); } 50% { transform: scaleY(.95); } }
 @keyframes caBo { 50% { transform: translateY(-4px); } }
 @keyframes caRp { 0% { transform: scale(.3); opacity: .8; } 100% { transform: scale(1.5); opacity: 0; } }
@@ -1542,7 +1553,7 @@ function 센서표칠(종류, k) {
   const g = e.c.getContext("2d"), 장 = e.장들[k] || e.장들[0];
   g.clearRect(0, 0, 128, 128);
   g.fillStyle = "rgba(255,255,255,.93)"; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = 색글(장비[종류].색); g.lineWidth = 5; g.stroke();
+  g.strokeStyle = 색글(장비[e.기본].색); g.lineWidth = 5; g.stroke();
   if (장) g.drawImage(장, 8, 8, 112, 112);
   e.m.map.needsUpdate = true;
 }
@@ -1603,11 +1614,13 @@ function 물결(g, x, y, 길) {
 }
 function 센서표재질(종류) {
   if (센서표그림.has(종류)) return 센서표그림.get(종류);
-  const k = 장비[종류], c = document.createElement("canvas"); c.width = c.height = 128;
-  if (클레이키[종류]) {          // 클레이 입체 아이콘 (2026-11-02) — 흰 원판 + 종류 색 테두리 위에 움직이는 그림
+  const [기본, 문] = 종류.split("@");          // 출입문은 「s_door@open」·「s_door@close」 (2026-11-03)
+  const k = 장비[기본], c = document.createElement("canvas"); c.width = c.height = 128;
+  if (클레이키[기본]) {          // 클레이 입체 아이콘 (2026-11-02) — 흰 원판 + 종류 색 테두리 위에 움직이는 그림
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
     const m = new THREE.SpriteMaterial({map: t, depthTest: false, toneMapped: false});
-    센서표판.set(종류, {c, m, 키: 클레이키[종류], 장들: 클레이장들(클레이키[종류])});
+    const 키 = 클레이키[기본] + (문 === "open" ? "_open" : 문 === "close" ? "_closed" : "");
+    센서표판.set(종류, {c, m, 기본, 키, 장들: 클레이장들(키)});
     센서표칠(종류, 클레이.장);
     센서표그림.set(종류, m); return m;
   }
@@ -1681,15 +1694,28 @@ function 타공판맞추기() {
   자리.forEach(([x, y, r], i) => { e.set(-Math.PI / 2, 0, -r); q.setFromEuler(e); m4.compose(V(x, y, .004), q, new THREE.Vector3(1, 1, 1)); 타공판.setMatrixAt(i, m4); });
   타공판.receiveShadow = true; 타공판.visible = 층.바닥.보임; scene.add(타공판);
 }
+/* 출입문 센서표 종류 — 실시간 값이 열림이면 「s_door@open」, 닫힘이면 「@close」, 모르면 「s_door」 (2026-11-03) */
+function 문표종류(it) {
+  if (it.종류 !== "s_door") return it.종류;
+  let v = null;
+  try { v = 라이브.켬 ? 라이브.값.get(it.id) : null; } catch { /* 처음 그릴 때는 라이브가 아직 없다 */ }
+  return v && (v.문 === "open" || v.문 === "close") ? `s_door@${v.문}` : it.종류;
+}
+let 문상태글 = "";
+function 문표다시() {           // 값을 새로 매긴 뒤 부른다 — 출입문 상태가 바뀌었을 때만 센서표를 다시 단다
+  const 글 = 모형.항목.filter(it => it.종류 === "s_door").map(it => it.id + ":" + 문표종류(it)).join(",");
+  if (글 !== 문상태글) { 문상태글 = 글; 센서표맞추기(); }
+}
 function 센서표맞추기() {
   const 있는 = new Set();
   for (const it of 모형.항목) {
     if (분류(it) !== "센서") continue;
     있는.add(it.id);
     let s = 센서표.get(it.id);
-    if (!s || s.material !== 센서표재질(it.종류)) {
+    const 표종류 = 문표종류(it);
+    if (!s || s.material !== 센서표재질(표종류)) {
       if (s) scene.remove(s);
-      s = new THREE.Sprite(센서표재질(it.종류)); s.scale.setScalar(작은센서(it) ? 아이콘크기 : .36); s.renderOrder = 12;
+      s = new THREE.Sprite(센서표재질(표종류)); s.scale.setScalar(작은센서(it) ? 아이콘크기 : .36); s.renderOrder = 12;
       scene.add(s); 센서표.set(it.id, s);
     }
     if (작은센서(it)) {      // 아이콘이 센서 자리에 선다(천장 것은 매달린다)
@@ -1974,10 +2000,12 @@ function 값매기기(t) {
       const 샘 = s.id === "LL-2";
       v = {누수: 샘, 위치: 샘 ? s.w * .38 : null, 단계: 샘 ? "위험" : "정상"};
     } else if (s.종류 === "s_leak") v = {누수: false, 단계: "정상"};
+    else if (s.종류 === "s_door") v = {단계: "정상", 문: 해시(s.id) > .75 ? "open" : "close"};     // 데모 출입문 — 넷 중 하나쯤 열림 (2026-11-03)
     else v = {단계: "정상"};
     if (라이브.덮어쓰기[s.id]) Object.assign(v, 라이브.덮어쓰기[s.id]);     // 시험·미리보기에서 한 센서의 상황을 정해 본다
     라이브.값.set(s.id, v);
   }
+  문표다시();
   const 공조 = 모형.항목.filter(it => it.종류 === "crac");
   공조.forEach((c, i) => {          // 항온항습기 — 하나는 고압 경보, 하나는 대기
     const 경보 = i === Math.floor(공조.length * .55), 정지 = i === Math.floor(공조.length * .2);
@@ -2590,6 +2618,10 @@ function FMS값(it) {
     else if (종 === "위치") v.거리 ??= 값;
   }
   v.단계 = !받음 && 단 === "정상" ? "정지" : 단;
+  if (it.종류 === "s_door") {      // 출입문 열림·닫힘 (2026-11-03) — 서버 widgets.state_text 와 같은 규칙: state_labels, 없으면 0 = close
+    const x = v.점들.find(x => x.값 != null && +x.값 === Math.round(+x.값));
+    if (x) v.문 = ((x.p.state_labels || {"0": "close", "1": "open"})[String(Math.round(+x.값))] || null);
+  }
   if (it.종류 === "crac") {
     v.공조 = true; v.운전 = !받음 ? "미수신" : 단 === "정상" ? "운전" : 단 === "주의" ? "주의" : "경보";
     v.글 = [`${it.id} ${v.운전}`, [v.온도 != null ? `환기 ${소수(v.온도)}℃` : "", v.습도 != null ? `습도 ${소수(v.습도)}%` : ""].filter(x => x).join(" · ") || "—"];
@@ -2637,6 +2669,7 @@ function FMS값매기기() {
     const 랙id = 분류(s) === "랙" ? s.id : s.랙;      // 랙에 붙은 코드·랙 안 온도 센서 → 그 랙 색
     if (랙id && v.단계 !== "정상" && !v.없음) { const 전 = 라이브.랙상태.get(랙id); 라이브.랙상태.set(랙id, !전 || 전 === "정지" ? v.단계 : 더나쁜(전, v.단계 === "정지" ? "정상" : v.단계)); }
   }
+  문표다시();
   const 붙은 = new Set(); for (const s of 라이브.센서) for (const p of 항목점들(s)) 붙은.add(p.id);
   FMS.밖알람 = [...FMS.상태.values()].filter(x => x.alarm_count && x.site_id === FMS.현장.id && !붙은.has(x.point_id)).length;
   /* 코드를 못 찾은 항목은 설정 문제라 운영 화면(알람·3D 표)에 띄우지 않는다 — 개수만 알람 창에 (77차 「값들이 복잡해 알아볼 수 없다」) */
