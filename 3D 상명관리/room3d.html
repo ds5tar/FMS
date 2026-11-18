@@ -13,7 +13,7 @@
   #stage{position:fixed;inset:0}
   #cv,#ov{position:absolute;inset:0;width:100%;height:100%;display:block}
   #cv{cursor:grab;touch-action:none}
-  #cv.over{cursor:pointer}
+  #cv.over,#cv.묶음위{cursor:pointer}
   #cv.drag{cursor:grabbing}
   #ov{pointer-events:none}
   /* 2D 열지도 (137차) — 3D 캔버스 위를 덮는 평면. 왼쪽 메뉴·정보·알람 창은 그 위에 그대로 */
@@ -31,7 +31,7 @@
   #p2svg text{pointer-events:none}
   body.p2 #ui,body.p2 #info,body.p2 #alarms{z-index:2}
   body.p2 #map,body.p2 #gauge{display:none}
-  body.p2 #alarms{top:auto;bottom:14px;right:14px;left:auto;transform:none}
+  body.p2 #alarms{top:auto!important;max-height:none!important;bottom:14px;right:14px;left:auto;transform:none}
   .모델표{border-collapse:collapse;font-size:12px;margin:6px 0;width:100%}
   .모델표 th,.모델표 td{border-bottom:1px solid var(--선,#e5e7eb);padding:3px 6px;text-align:left}
   #credits{position:fixed;right:8px;bottom:4px;z-index:3;font-size:10.5px;color:#6b7280;background:rgba(255,255,255,.7);padding:1px 6px;border-radius:4px;pointer-events:none;max-width:60vw}
@@ -164,7 +164,14 @@
   #liveBtn:hover{background:#12873e}
   #liveBtn.켬{background:#fff;color:#16a34a}
   #liveOpts label{font-size:12px}
-  #alarms{top:14px;left:50%;transform:translateX(-50%);width:400px;padding:10px 12px}
+  /* 594차 사용자 「3d 전산실과 겹쳐서 시야가 방해된다 · 표시된 것 위치이동」 — 알람 창을 가운데 위에서 오른쪽 「시점 조절」 아래로 옮긴다.
+     세로는 알람자리() 가 시점 조절·평면 지도 사이에 맞추고 넘치면 창 안에서 넘긴다. 화면을 끌어 돌리는 동안은 흐리게(알람흐림) */
+  #alarms{top:14px;right:14px;width:362px;padding:10px 12px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;transition:opacity .2s}
+  #alarms[hidden]{display:none}
+  /* 595차 사용자 「알람항목이 많은때 스크롤되게」 — 머리·범례는 두고 알람 목록만 창 안에서 넘긴다(7건만 보이던 것 → 전부) */
+  #alarms .목록{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin-right:-6px;padding-right:4px}
+  #alarms.흐림{opacity:.18;pointer-events:none}
+  #alarms .알람 b,#alarms .알람 span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #replay{bottom:14px;left:50%;transform:translateX(-50%);width:min(760px,calc(100vw - 600px));min-width:420px;padding:8px 12px;display:flex;gap:8px;align-items:center}
   #replay[hidden]{display:none}
   #replay input[type=range]{flex:1;min-width:120px} #replay b{min-width:92px;font-variant-numeric:tabular-nums}
@@ -184,7 +191,8 @@
   #alarms .머리 b{font-size:13px}
   #alarms .범례{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 4px;font-size:11.5px;color:var(--sub)}
   #alarms .범례 i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
-  #alarms .알람{display:grid;grid-template-columns:12px 1fr auto;gap:8px;align-items:center;padding:3px 4px;border-radius:5px;cursor:pointer;font-size:12.5px}
+  #alarms .알람{display:grid;grid-template-columns:12px minmax(0,1fr);column-gap:8px;row-gap:1px;align-items:center;padding:3px 4px;border-radius:5px;cursor:pointer;font-size:12.5px}
+  #alarms .알람 span{grid-column:2;font-size:11.5px}
   #alarms .알람:hover{background:#f1f4f7}
   #alarms .알람 i{width:10px;height:10px;border-radius:50%}
   #alarms .알람 span{color:var(--sub);font-variant-numeric:tabular-nums}
@@ -242,6 +250,16 @@
   :root[data-theme="light"] #status .말{color:#b45309}
   :root[data-theme="light"] .대화막{background:#0004}
   :root[data-theme="light"] .대화상자{box-shadow:0 12px 40px #0003}
+  /* 629차 — 8방향 시점 단추·요약판·전산실 목록 */
+  .vgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 6px; }
+  .vgrid button { padding: 2px 0; font-size: 11px; }
+  .sumbox { margin-top: 8px; padding: 6px 8px; border: 1px solid rgba(127,127,127,.3); border-radius: 6px; font-size: 12px; line-height: 1.6; }
+  .sumbox .k { opacity: .7; margin-right: 4px; }
+  .sumbox .n { font-weight: 700; margin-right: 8px; }
+  .sumbox details { margin-top: 4px; }
+  .sumbox .sc { display: block; width: 100%; text-align: left; margin-top: 4px; padding: 4px 6px; }
+  .sumbox .sc.now { outline: 2px solid #3b82f6; }
+  .sumbox .bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 2px 0 4px; background: rgba(127,127,127,.25); }
 </style>
 <script>
 /* 3D 가 시작조차 못 하면 스스로 알린다 (189차) — 사용자 「외부에서 https://192.168.0.111:8080 으로 들어오면 3D 상면에 데이터가 표시 안 된다」.
@@ -313,12 +331,19 @@
     <button id="v_eye">통로에서</button>
     <button id="v_2d" title="위에서 본 평면에 랙 칸을 흡기 온도·알람 색으로 칠합니다 — 범례와 덧칠 종류 (137차, Device42·Nlyte 평면 덧칠)">2D 열지도</button>
   </div>
+  <div id="vgrid" class="vgrid" title="카메라 자리 — 위에서 본 방향(아래쪽이 앞). 옆은 낮게, 모서리는 위에서 비스듬히 봅니다 (629차)">
+    <button data-v="bl">뒤·왼</button><button data-v="b">뒤</button><button data-v="br">뒤·오</button>
+    <button data-v="l">왼쪽</button><button data-v="top">위</button><button data-v="r">오른쪽</button>
+    <button data-v="fl">앞·왼</button><button data-v="f">앞</button><button data-v="fr">앞·오</button>
+  </div>
+  <div id="sumBox" class="sumbox" hidden></div>
   <label style="margin-top:7px"><input type="checkbox" id="t_wallhi">벽을 전체 높이로 (3.6 m)</label>
   <label title="금속 판·손잡이에 방이 비칩니다. 그래픽 카드가 없는 PC(원격 데스크톱 등)에서는 느려 처음엔 꺼져 있습니다"><input type="checkbox" id="t_hq">반사 (고화질)</label>
   <input id="find" placeholder="찾기 — 랙 R123 · 열 C1 · AC05" autocomplete="off">
   <button id="liveBtn" title="FMS 에 붙었을 때 센서 값이 어떻게 보이는지 데모 값으로 보여 줍니다">실시간 값 미리보기 ▶</button>
   <div id="liveOpts" hidden>
-    <label title="랙을 무엇으로 칠할지 (87차)">랙 색 <select id="t_rackmode"><option value="알람">알람 상태</option><option value="온도">흡기 온도</option><option value="끄기">칠하지 않음</option></select></label>
+    <label title="랙을 무엇으로 칠할지 (87차)">랙 색 <select id="t_rackmode"><option value="알람">알람 상태</option><option value="온도">흡기 온도</option><option value="공간">공간 사용률 (장착 U)</option><option value="끄기">칠하지 않음</option></select></label>
+    <div id="rackLg" class="sub" hidden></div>
     <label><input type="checkbox" id="t_heat" checked>바닥 온도 분포</label>
     <button id="replayBtn" title="지난 온도 기록을 시간 막대로 돌려 봅니다 — 바닥 온도 분포·랙 색·값 표가 그 시각 값으로 (87차)">⏱ 지난 기록 돌려보기</button>
   </div>
@@ -1552,7 +1577,9 @@ function 센서표칠(종류, k) {
   const e = 센서표판.get(종류); if (!e) return;
   const g = e.c.getContext("2d"), 장 = e.장들[k] || e.장들[0];
   g.clearRect(0, 0, 128, 128);
-  g.fillStyle = "rgba(255,255,255,.93)"; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill();
+  // 597차 사용자 「대시보드의 누수 아이콘과 3D 상면의 누수 아이콘이 다르다. 대시보드 아이콘으로 통일」 — 누수 그림(옅은 파랑 배관·물방울)은
+  //   흰 원판에서 회색 막대로만 보였다. 대시보드 칸처럼 어두운 바탕에 얹는다
+  g.fillStyle = e.키 === "leak" ? "rgba(28,34,48,.96)" : "rgba(255,255,255,.93)"; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill();
   g.strokeStyle = 색글(장비[e.기본].색); g.lineWidth = 5; g.stroke();
   if (장) g.drawImage(장, 8, 8, 112, 112);
   e.m.map.needsUpdate = true;
@@ -1778,7 +1805,7 @@ function 바닥점(ndc) {
 const 고른 = new Set();
 let 위에 = null;
 /* 실시간 미리보기 상태 — 켜면 센서 값에 따라 랙·항온항습기 색을 바꾼다 (아래 「실시간 미리보기」) */
-const 라이브 = {켬: false, 랙칠: "알람", 랙온도: new Map(), 바닥열: true, 덮어쓰기: {}, 센서: [], 값: new Map(), 랙상태: new Map(), 알람: [],
+const 라이브 = {켬: false, 랙칠: "알람", 랙온도: new Map(), 랙공간: new Map(), 랙공간시각: 0, 바닥열: true, 덮어쓰기: {}, 센서: [], 값: new Map(), 랙상태: new Map(), 알람: [],
   표: new Map(), 덧: new THREE.Group(), 열판: null, 타이머: null, 시작: 0};
 scene.add(라이브.덧);
 /* ⑤ 카메라 시야 (174차, 조사서 그림 6) — 카메라 항목(점 CCTV.<카메라>)마다 바닥에 시야 부채꼴(방향 = 항목 회전, 화각 = 장비 대장,
@@ -1894,6 +1921,7 @@ function 라이브재질(it) {
   if (v && v.실제 && v.단계 !== "정상" && 분류(it) !== "센서" && 분류(it) !== "랙") return 상태재질[v.단계];     // FMS 값을 받은 UPS 등
   if (라이브.랙칠 === "알람" && 라이브.랙상태.has(it.id)) return 상태재질[라이브.랙상태.get(it.id)];
   if (라이브.랙칠 === "온도" && 라이브.랙온도.has(it.id) && 분류(it) === "랙") return 온도재질(라이브.랙온도.get(it.id));
+  if (라이브.랙칠 === "공간" && 분류(it) === "랙") { const r = 라이브.랙공간.get(it.id); return r ? 공간재질[공간단계(r)] : null; }
   return null;
 }
 /* 세부를 살린 칠 (89차 「장애가 난 설비를 색칠하는데 설비의 디테일을 살리고」) — 상태·고름·온도 색을 단색 재질로 바꾸지 않고,
@@ -2317,19 +2345,45 @@ $("p2_floor").onchange = 평면2d그리기;
 function 알람그리기() {
   const el = $("alarms"); el.hidden = !라이브.켬; if (!라이브.켬) return;
   const 수 = (단) => 라이브.알람.filter(a => a.v.단계 === 단).length;
+  /* 595차 사용자 「알람이 없을 때는 창을 접힌 한 줄(「알람 0건」)로만 두기」 — 0건이면 저절로 접고, 알람이 생기면 저절로 편다.
+     0건일 때 사람이 「펴기」 를 누르면 그대로 펴 둔다(dataset.손) */
+  const 건 = 라이브.알람.filter(a => a.v.단계 !== "정지").length;
+  if (건 === 0 && !el.dataset.손) { if (!el.classList.contains("접힘")) { el.classList.add("접힘"); el.dataset.자동 = "1"; } }   // 사람이 접어 둔 것은 알람이 와도 그대로
+  else if (건 > 0) { if (el.dataset.자동) el.classList.remove("접힘"); delete el.dataset.자동; delete el.dataset.손; }
+  const 넘긴 = el.querySelector(".목록")?.scrollTop || 0;          // 595차 — 5초마다 다시 그려도 넘긴 자리 그대로
   el.replaceChildren(
     엘("div", {class: "머리"}, 엘("b", {textContent: `알람 ${라이브.알람.filter(a => a.v.단계 !== "정지").length}건 · ${FMS켬 ? "미수신" : "대기"} ${수("정지")}${FMS켬 ? "개" : "대"}`}),
       엘("span", {class: "sub", textContent: FMS켬 ? FMS.머리말 : "데모 값 · 2초마다 바뀜"}),
       엘("button", {class: "접기", title: "접기·펴기", textContent: el.classList.contains("접힘") ? "펴기" : "접기",      // 123차 — 다시 그려도 접힌 채
-        onclick: (e) => { e.stopPropagation(); const 접 = el.classList.toggle("접힘"); e.currentTarget.textContent = 접 ? "펴기" : "접기"; }})),
+        onclick: (e) => { e.stopPropagation(); const 접 = el.classList.toggle("접힘"); e.currentTarget.textContent = 접 ? "펴기" : "접기";
+          delete el.dataset.자동; if (!접 && !라이브.알람.some(a => a.v.단계 !== "정지")) el.dataset.손 = "1"; else delete el.dataset.손; 알람자리(); }})),
     엘("div", {class: "범례"}, ...["정상", "주의", "경고", "위험", "정지"].map(단 => 엘("span", {}, 엘("i", {style: "background:" + 상태색[단]}), 단 === "정지" ? "대기·정지" : 단)),
       엘("span", {textContent: FMS켬 ? `· 배치한 FMS 센서 ${라이브.센서.length - (FMS.코드없음 || []).length}${FMS.밖알람 ? ` · 배치 안 된 센서의 알람 ${FMS.밖알람}건` : ""}${(FMS.코드없음 || []).length ? ` · 코드를 못 찾은 항목 ${FMS.코드없음.length}개 (배치 편집에서 확인)` : ""}`
         : `· 랙 흡기 ${라이브.센서.filter(s => s.랙).length} · 통로 온습도 ${라이브.센서.filter(s => s.종류 === "s_th").length} · 누수선 ${라이브.센서.filter(s => s.종류 === "s_leak_line").length}`})),
-    ...라이브.알람.slice(0, 7).map(({id, v}) => {
+    엘("div", {class: "목록"}, ...라이브.알람.slice(0, 300).map(({id, v}) => {
       const s = 센서찾기(id), 이름 = FMS켬 ? FMS알람이름(id) : !s ? `${id} 항온항습기` : s.데모 ? s.이름 : `${s.id} ${s.이름}${s.랙 ? ` · ${s.랙}` : ""}`;
       return 엘("div", {class: "알람", onclick: () => 알람으로(id)},
-        엘("i", {style: "background:" + 상태색[v.단계]}), 엘("b", {textContent: 이름}), 엘("span", {textContent: 값글(id).slice(0, 2).join(" · ")}));
-    }));
+        엘("i", {style: "background:" + 상태색[v.단계]}), 엘("b", {textContent: 이름, title: 이름}), 엘("span", {textContent: 값글(id).slice(0, 2).join(" · "), title: 값글(id).slice(0, 2).join(" · ")}));
+    })));
+  const 목록 = el.querySelector(".목록"); if (목록) 목록.scrollTop = 넘긴;
+  알람자리();
+}
+/* 594차 — 알람 창 세로 자리: 시점 조절(#gauge) 바로 아래부터 평면 지도(#map) 위까지. 둘이 숨으면 그 칸까지 쓴다 */
+function 알람자리() {
+  const el = $("alarms"); if (!el || document.body.classList.contains("p2")) { if (el) { el.style.top = ""; el.style.maxHeight = ""; } return; }
+  const g = $("gauge"), m = $("map"), 보임 = (x) => x && x.getClientRects().length > 0 && getComputedStyle(x).display !== "none";   // fixed 창은 offsetParent 가 늘 null
+  const 위 = 보임(g) ? g.getBoundingClientRect().bottom + 10 : 14;
+  const 아래 = 보임(m) ? m.getBoundingClientRect().top - 10 : innerHeight - 14;
+  el.style.top = 위 + "px";
+  el.style.maxHeight = Math.max(120, 아래 - 위) + "px";
+}
+addEventListener("resize", 알람자리);
+if (window.ResizeObserver) { const ro = new ResizeObserver(알람자리); for (const id of ["gauge", "map"]) { const x = document.getElementById(id); if (x) ro.observe(x); } }
+let 알람흐림틀 = 0;
+function 알람흐림(켬) {
+  const el = $("alarms"); if (!el) return;
+  clearTimeout(알람흐림틀);
+  if (켬) el.classList.add("흐림"); else 알람흐림틀 = setTimeout(() => el.classList.remove("흐림"), 1200);
 }
 function 알람으로(id) {
   if (걷기.켬) { 걷기알람(0, id); return; }
@@ -2353,7 +2407,7 @@ function 라이브켜기(켬) {
   if (켬 && FMS켬) {
     라이브.센서 = FMS센서();
     const 한번 = async () => { try { await FMS값받기(); } catch (e) { FMS.머리말 = "값을 받지 못했습니다 — " + e.message; }
-      if (!라이브.켬 || 재생.켬) return; FMS값매기기(); 라이브그리기(); };
+      if (!라이브.켬 || 재생.켬) return; FMS값매기기(); 라이브그리기(); 요약그리기(); 랙공간읽기(); };
     한번(); 라이브.타이머 = setInterval(한번, FMS.주기);
   } else if (켬) {
     라이브.센서 = 미리보기센서(); 라이브.시작 = performance.now();
@@ -2368,7 +2422,106 @@ function 라이브켜기(켬) {
   더러움 = true;
 }
 $("liveBtn").onclick = () => 라이브켜기(!라이브.켬);
-$("t_rackmode").onchange = e => { 라이브.랙칠 = e.target.value; 칠하기(); };
+$("t_rackmode").onchange = e => { 라이브.랙칠 = e.target.value; 공간범례(); if (라이브.랙칠 === "공간") 랙공간읽기(true); 칠하기(); };
+/* ── 랙 공간 사용률·요약판·전산실 목록 (629차) ──────────────────────────────
+   사용자 「첨부된 파일을 참조하여 3d 상면관리에 추가할 내용이 있으면 컨폼을 받고 추가해」 → 고른 셋(공간 사용률 색·8방향 시점·요약판/전산실 목록).
+   · 공간 사용률 — 자산·점검 > 랙 용량(/api/racks, 138차)의 쓴 U ÷ 랙 높이. 랙 코드 = 3D 랙 id. 등록 안 된 랙은 칠하지 않는다(회색 그대로)
+     구간은 타업체 3D 와 같은 0~40 · 40~75 · 75~100 %. 알람 색과 헷갈리지 않게 초록·노랑·주황(깜빡이지 않음)
+   · 요약판 — 이 현장의 랙 수·등록·사용률 구간별 랙 수·U 합계·등급별 알람(센서마다 가장 나쁜 등급, 위쪽 KPI 와 같은 셈)
+   · 전산실 목록 — 현장마다 등급별 알람 수 카드, 누르면 그 현장 3D 로 */
+const 공간재질 = {
+  낮음: new THREE.MeshStandardMaterial({color: 0x2fa84f, roughness: .75}),
+  보통: new THREE.MeshStandardMaterial({color: 0xd9b52c, roughness: .75}),
+  높음: new THREE.MeshStandardMaterial({color: 0xe0702c, roughness: .75}),
+};
+const 공간색 = {낮음: "#2fa84f", 보통: "#d9b52c", 높음: "#e0702c", 미등록: "#6b7280"};
+const 공간률 = (r) => r.u_total ? (r.used_u || 0) / r.u_total * 100 : 0;
+const 공간단계 = (r) => { const p = 공간률(r); return p < 40 ? "낮음" : p < 75 ? "보통" : "높음"; };
+function 공간범례() {
+  const el = $("rackLg"); el.hidden = 라이브.랙칠 !== "공간"; if (el.hidden) return;
+  el.replaceChildren(...[["낮음", "0~40%"], ["보통", "40~75%"], ["높음", "75~100%"], ["미등록", "랙 용량에 없음"]].map(([k, t]) =>
+    엘("span", {style: "margin-right:8px"}, 엘("b", {style: `color:${공간색[k]}`, textContent: "■ "}), 엘("span", {textContent: t}))));
+}
+async function 랙공간읽기(지금 = false) {
+  if (!FMS켬 || !FMS.현장) return;
+  if (!지금 && Date.now() - 라이브.랙공간시각 < 60000) return;
+  라이브.랙공간시각 = Date.now();
+  const sid = FMS.현장.id;
+  let b; try { b = await fms("/api/racks"); } catch { return; }          // 권한이 없거나 서버가 옛 판이면 조용히 둔다
+  if (!FMS.현장 || FMS.현장.id !== sid) return;
+  라이브.랙공간 = new Map((b.racks || []).filter(r => r.site_id === sid).map(r => [r.code, r]));
+  if (라이브.랙칠 === "공간") 칠하기();
+  요약그리기(); if (고른.size === 1 && 라이브.랙공간.has([...고른][0])) 정보();
+}
+function 랙공간줄(it, 줄) {
+  if (!FMS켬 || 분류(it) !== "랙") return;
+  const r = 라이브.랙공간.get(it.id);
+  if (!r) { 줄("장착 U", 엘("span", {class: "sub", textContent: `자산·점검 > 랙 용량에 코드 ${it.id} 로 등록하면 장착 U·장비가 나옵니다`})); return; }
+  const 단 = 공간단계(r);
+  줄("장착 U", 엘("b", {style: `color:${공간색[단]}`, textContent: `${r.used_u || 0} / ${r.u_total} U (${공간률(r).toFixed(0)}%) · 빈 ${r.free_u ?? r.u_total - (r.used_u || 0)} U`}));
+  if (r.power_kw != null) 줄("전력", `${(r.power_used_kw || 0).toFixed(1)} / ${r.power_kw} kW`);
+  const eq = (r.equipment || []).filter(e => e.u_start).sort((a, b) => b.u_start - a.u_start);
+  const 칸 = 엘("div", {style: "max-height:160px;overflow:auto;font-size:12px"});
+  for (const e of eq.slice(0, 40)) {
+    const 끝 = e.u_start + (e.u_size || 1) - 1;
+    칸.append(엘("div", {}, 엘("span", {class: "k", textContent: (e.u_size || 1) > 1 ? `${끝}~${e.u_start}U` : `${e.u_start}U`}), 엘("span", {textContent: e.name})));
+  }
+  if (eq.length > 40) 칸.append(엘("div", {class: "sub", textContent: `외 ${eq.length - 40}대`}));
+  if (!eq.length) 칸.append(엘("div", {class: "sub", textContent: "얹힌 장비 없음"}));
+  if ((r.no_slot || []).length) 칸.append(엘("div", {class: "sub", textContent: `U 자리 없는 장비 ${r.no_slot.length}대`}));
+  줄("실장도", 칸);
+}
+const 등급이름 = [[1, "위급", "#dc2626"], [2, "중대", "#ea6c0a"], [3, "경미", "#c99700"], [4, "주의", "#3b82f6"]];
+/* 등급 이름·색은 관제 화면 위쪽 칸과 같게 — FMS 등급 정의(/api/dashboard 의 severities)를 한 번 받아 덮는다 */
+async function 등급이름받기() {
+  try {
+    for (const x of (await fms("/api/dashboard")).severities || []) {
+      const e = 등급이름.find(y => y[0] === x.level); if (!e) continue;
+      e[1] = x.name_ko || x.name || x.code || e[1]; if (x.color) e[2] = x.color;
+    }
+    요약그리기();
+  } catch { /* 옛 서버 — 기본 이름 그대로 */ }
+}
+function 현장알람수(sid) {
+  const n = {1: 0, 2: 0, 3: 0, 4: 0};
+  for (const x of (FMS.상태 || new Map()).values()) if (x.site_id === sid && x.alarm_count && n[x.worst_level] != null) n[x.worst_level]++;
+  return n;
+}
+function 요약그리기() {
+  const box = $("sumBox");
+  if (!FMS켬 || !FMS.현장 || 편집중) { box.hidden = true; return; }
+  box.hidden = false;
+  const 랙들 = 모형.항목.filter(it => 분류(it) === "랙");
+  const 구간 = {낮음: 0, 보통: 0, 높음: 0}; let 등록 = 0, 전체U = 0, 쓴U = 0;
+  for (const it of 랙들) { const r = 라이브.랙공간.get(it.id); if (!r) continue; 등록++; 구간[공간단계(r)]++; 전체U += r.u_total; 쓴U += r.used_u || 0; }
+  const 숫 = (k, v, 색) => [엘("span", {class: "k", textContent: k}), 엘("span", {class: "n", style: 색 ? `color:${색}` : "", textContent: String(v)})];
+  const 줄 = (...xs) => 엘("div", {}, ...xs.flat());
+  const 막대 = 엘("div", {class: "bar", title: "랙 공간 사용률 구간별 랙 수"});
+  for (const k of ["낮음", "보통", "높음"]) if (구간[k]) 막대.append(엘("i", {style: `flex:${구간[k]};background:${공간색[k]}`}));
+  if (랙들.length - 등록) 막대.append(엘("i", {style: `flex:${랙들.length - 등록};background:transparent`}));
+  const n = 현장알람수(FMS.현장.id);
+  box.replaceChildren(
+    엘("b", {textContent: `${FMS.현장.name} 요약`}),
+    줄(숫("랙", 랙들.length), 숫("랙 용량 등록", 등록)),
+    줄(숫("0~40%", 구간.낮음, 공간색.낮음), 숫("40~75%", 구간.보통, 공간색.보통), 숫("75~100%", 구간.높음, 공간색.높음)), 막대,
+    줄(숫("U 전체", 전체U), 숫("사용", 쓴U), 숫("빈", 전체U - 쓴U), 전체U ? 숫("사용률", (쓴U / 전체U * 100).toFixed(0) + "%") : []),
+    줄(...등급이름.map(([lv, 이름, 색]) => 숫(이름, n[lv], n[lv] ? 색 : ""))));
+  if (FMS.현장들.length > 1) {
+    const d = 엘("details", {open: 요약그리기.열림 || false});
+    d.addEventListener("toggle", () => { 요약그리기.열림 = d.open; });
+    d.append(엘("summary", {textContent: `전산실 목록 (${FMS.현장들.length})`}));
+    for (const x of FMS.현장들) {
+      const m = 현장알람수(x.id), 합 = m[1] + m[2] + m[3] + m[4];
+      const b = 엘("button", {class: "sc" + (x.id === FMS.현장.id ? " now" : ""), title: `${x.name} 3D 상면으로 갑니다`},
+        엘("b", {textContent: x.name + " "}),
+        ...(합 ? 등급이름.filter(([lv]) => m[lv]).map(([lv, 이름, 색]) => 엘("span", {style: `color:${색};margin-right:6px`, textContent: `${이름} ${m[lv]}`}))
+          : [엘("span", {style: "color:#16a34a", textContent: "정상"})]));
+      b.onclick = () => { if (x.id !== FMS.현장.id) 현장열기(x.id); };
+      d.append(b);
+    }
+    box.append(d);
+  }
+}
 $("replayBtn").onclick = () => 재생열기(24);
 /* ── 지난 기록 돌려보기 (87차 — 타업체 비교 1순위, Sunbird 열지도 타임랩스) ──
    FMS: 배치한 센서 가운데 온도 점의 1시간 평균(/api/points/{id}/series?bucket=1h)을 받아, 시각마다 바닥 온도 분포·랙 색·값 표를 그 값으로 다시 그린다.
@@ -2490,8 +2643,25 @@ function 라이브깜빡(now) {
      표가 많을 때(40개 넘게) 두 칸 올려도 겹치는 정상 값은 숨긴다 — 가까이 가면 다시 보인다 */
   표들.sort((a, b) => a.순 - b.순 || a.거리 - b.거리);
   const 놓인 = [], 끌선 = [], 겹침 = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+  /* 597차 — 가까운 표 묶기: 제자리에서 서로 겹치는 표는 급한 것(대표) 하나만 보이고 「+N」 단추를 단다.
+     단추를 누르면 그 묶음만 펼쳐 위로 늘어놓고(「접기」), 다시 누르면 접는다. 묶음 이름은 대표 표의 센서 */
+  const 묶음 = [];
   for (const t of 표들) {
-    const 최대 = t.순 < 4 || 적음 ? 3 : 1;      // 이상 값(표가 적으면 다)은 세 칸까지 비켜 놓고, 많을 때 정상 값은 한 칸만 — 그래도 겹치면 숨긴다(가까이 가면 보임)
+    const 반 = Math.min(t.w, 130) / 2;          // 넓은 표(항온항습기)가 둘레 표를 다 삼키지 않게 가로는 130 px 까지만
+    const 상자 = {x0: t.x - 반 - 4, x1: t.x + 반 + 4, y0: t.y - t.h * 1.5 - 3, y1: t.y + t.h / 2};   // 위로 한 칸 비켜도 겹칠 만큼 가까우면 묶는다
+    const g = 묶음.find(g => 겹침(g.상자, 상자));
+    if (g) g.남.push(t); else 묶음.push({t, 상자, 남: [], 키: t.s.userData.id});
+  }
+  for (const k of [...표묶음.펼친]) if (!묶음.some(g => g.키 === k && g.남.length)) 표묶음.펼친.delete(k);
+  const 늘어놓을 = [];
+  for (const g of 묶음) {
+    늘어놓을.push(g.t);
+    if (!g.남.length) continue;
+    if (표묶음.펼친.has(g.키)) { for (const m of g.남) { m.펼침 = true; 늘어놓을.push(m); } }
+    else for (const m of g.남) m.s.visible = false;
+  }
+  for (const t of 늘어놓을) {
+    const 최대 = t.펼침 ? 40 : t.순 < 4 || 적음 ? 3 : 1;      // 이상 값(표가 적으면 다)은 세 칸까지 비켜 놓고, 많을 때 정상 값은 한 칸만 — 그래도 겹치면 숨긴다(가까이 가면 보임) · 펼친 묶음은 다
     let 칸 = 0, r;
     for (; 칸 <= 최대; 칸++) {
       const y = t.y - 칸 * (t.h + 3);
@@ -2500,7 +2670,7 @@ function 라이브깜빡(now) {
     }
     if (칸 > 최대) { if (t.순 === 4 && !적음) { t.s.visible = false; continue; } 칸 = 최대; }
     t.s.center.y = .5 - 칸 * (t.h + 3) / t.h;
-    놓인.push(r);
+    놓인.push(r); t.r = r;
     if (칸) 끌선.push([t.x, t.y, t.x, t.y - 칸 * (t.h + 3) + t.h / 2, t.s.userData.단계]);
   }
   /* 비켜 놓은 표는 제자리까지 가는 가는 선을 긋는다 — 표가 어느 장비 것인지 보이게 (76차) */
@@ -2512,7 +2682,30 @@ function 라이브깜빡(now) {
     og.beginPath(); og.arc(x0, y0, 2.5, 0, Math.PI * 2); og.fillStyle = og.strokeStyle; og.fill();
   }
   og.globalAlpha = 1;
+  /* 597차 — 묶음 단추: 대표 표 오른쪽 위에 「+N」(접힘) · 「접기」(펼침). 색은 묶음 안에서 가장 급한 단계 */
+  표묶음.단추 = [];
+  og.font = "bold 12px 'Malgun Gothic', sans-serif"; og.textBaseline = "middle"; og.textAlign = "center";
+  for (const g of 묶음) {
+    if (!g.남.length || !g.t.r || !g.t.s.visible) continue;
+    const 펼 = 표묶음.펼친.has(g.키), 글 = 펼 ? "접기" : `+${g.남.length}`;
+    const bw = Math.max(24, og.measureText(글).width + 12), bh = 18;
+    const x1 = Math.min(W - 2, g.t.r.x1 + 6), x0 = x1 - bw, y0 = Math.max(2, g.t.r.y0 - 8), y1 = y0 + bh;
+    const 급 = [g.t, ...g.남].reduce((a, b) => (b.순 < a.순 ? b : a)).s.userData.단계;
+    og.fillStyle = 펼 ? "#334155" : (상태색[급] || 상태색.정상); og.strokeStyle = "#fff"; og.lineWidth = 1.5;
+    og.beginPath(); og.roundRect(x0, y0, bw, bh, 9); og.fill(); og.stroke();
+    og.fillStyle = "#fff"; og.fillText(글, (x0 + x1) / 2, (y0 + y1) / 2 + .5);
+    표묶음.단추.push({x0: x0 - 3, y0: y0 - 3, x1: x1 + 3, y1: y1 + 3, 키: g.키, 수: g.남.length, 펼: 펼, 남: g.남.map(m => m.s.userData.id)});
+  }
   for (const o of 라이브.덧.children) if (o.userData.깜빡) o.material.opacity = .6 + .4 * p;
+}
+const 표묶음 = {펼친: new Set(), 단추: []};
+function 묶음단추찾기(e) {
+  const b = cv.getBoundingClientRect(), x = e.clientX - b.left, y = e.clientY - b.top;
+  return 표묶음.단추.find(d => x >= d.x0 && x <= d.x1 && y >= d.y0 && y <= d.y1) || null;
+}
+function 묶음누르기(키) {
+  if (표묶음.펼친.has(키)) 표묶음.펼친.delete(키); else 표묶음.펼친.add(키);
+  라이브.깜빡때 = 0; 더러움 = true;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -2708,6 +2901,7 @@ async function FMS시작(sid) {
   $("liveBtn").title = "FMS 에서 받은 실제 값으로 랙·항온항습기·센서 색을 바꿉니다";
   try {
     FMS.현장들 = (await fms("/api/sites")).sites || [];
+    등급이름받기();                               // 629차 — 요약판·전산실 목록의 등급 이름
     모델들읽기();                                 // 제조사·모델별 실사 모델을 DB 에서 미리 받는다 (103차) — 기다리지 않고 현장부터 연다
     const ops = await fms("/api/settings/ops").catch(() => null);
     const 정 = ops && (ops.items || []).find(x => x.name === "stale_sec"); if (정) FMS.정체 = 정.value;
@@ -2749,6 +2943,7 @@ async function 현장열기(sid) {
   try { await FMS점받기(); } catch (e) { 상태("FMS 센서 목록을 받지 못했습니다 — " + e.message); }
   if (지났나()) return;
   FMS출처표시(); 층체크그리기(); 고르기([]); 정보(); FMS목록그리기();
+  라이브.랙공간 = new Map(); 라이브.랙공간시각 = 0; 요약그리기(); 랙공간읽기(true);        // 629차 — 현장이 바뀌면 랙 용량도 그 현장 것으로
   if (!편집중) { 시점들.iso(); 라이브켜기(true); }
   시야받기(s.id);                                             // ⑤ 카메라 시야 (174차)
 }
@@ -2899,6 +3094,7 @@ function 정보() {
     줄("항목", `${ids.length}개 (${첫.id} ~ ${끝.id})`);
   } else {
     const it = 찾기id.get(ids[0]);
+    if (!it) { 알림("객체를 누르면 정보가 나옵니다", "두 번 누르면 그 자리로 갑니다."); return; }     // 597차 — 없는 id 를 고른 채 실시간 값을 끄면 여기서 멈춰 끌선이 남았다
     el.append(엘("b", {textContent: it.id + " "}), 엘("span", {class: "sub", textContent: 장비[it.종류].이름}));
     if (it.이름 && it.이름 !== 장비[it.종류].이름) 줄("이름", it.이름);
     if (it.열) 줄("열", it.열);
@@ -2909,6 +3105,7 @@ function 정보() {
     if (it.제조사 || it.모델) 줄("제조사·모델", [it.제조사, it.모델].filter(Boolean).join(" ") + (모델쓰나(it) ? " (실사 모델)" : ""));
     if (it.점) 줄("센서 코드", it.점);
     if (it.메모) 줄("메모", it.메모);
+    랙공간줄(it, 줄);                                              // 629차 — 랙 장착 U·실장도
     for (const [k, v, 단] of 라이브줄(it))                        // 182차 — 센서 이름 앞의 설비 이름(「정문 출입구 영상 신호」)은 떼고 「영상 신호」 만
       줄(it.이름 && k.startsWith(it.이름 + " ") ? k.slice(it.이름.length + 1) : k, 엘("b", {style: `color:${상태색[단] || "inherit"}`, textContent: v}));
     const cam = it.종류 === "s_cctv" ? 항목카메라(it) : null;
@@ -2938,8 +3135,35 @@ function 정보() {
       }
     }
   }
+  if (ids.length === 1) 영향칸(el, 찾기id.get(ids[0]));
   el.append(엘("div", {class: "sub", style: "margin-top:4px", textContent: "F 를 누르면 가까이 갑니다."}));
   정보자리();
+}
+/* 537차 사용자 「장애로 팝업이 뜨는 모든 화면에 조금전에 말한 영향이 미치는 곳을 알려줘」 — 알람이 걸린 센서를 고르면
+   FMS 가 위치·유형으로 찾은 영향 범위(/api/points/{id}/impact)를 정보 칸 아래에 */
+function 장애점(it) {
+  if (!FMS켬 || !it || !it.점 || !FMS.태그 || !FMS.상태) return null;
+  return (FMS.점들 || []).find(p => (p.tag === it.점 || String(p.tag).startsWith(it.점 + ".")) && (FMS.상태.get(p.id) || {}).alarm_count) || null;
+}
+function 영향칸(el, it) {
+  const p = 장애점(it);
+  if (!p) return;
+  const 칸 = 엘("div", {class: "sub", style: "margin-top:6px"});
+  el.append(칸);
+  fms(`/api/points/${p.id}/impact`).then(r => {
+    칸.append(엘("b", {textContent: "이 센서 이상이 영향을 주는 곳"}));
+    const 줄 = t => 칸.append(엘("div", {textContent: "· " + t}));
+    (r.effects || []).forEach(줄);
+    // 543차 「현장,위치,센서 명,태그 , 총 센서수를 구체적으로」 — 계통도 아래쪽·같은 위치를 하나씩
+    const down = r.downstream || [], sp = r.same_place || [];
+    줄(`영향을 받는 센서 총 ${r.total ?? down.length + sp.length}개 — 계통도 아래쪽 ${down.length}개 · 같은 위치 ${sp.length}개`);
+    for (const x of down.slice(0, 8)) 줄(`계통도 「${x.view}」 아래쪽 ${x.label}: ${x.site || ""} ${x.where || ""} · ${x.name || ""}(${x.tag})${x.alarm ? " · 알람" : ""}`);
+    for (const x of sp.slice(0, 10)) 줄(`같은 위치: ${x.site || ""} ${x.where || r.place || ""} · ${x.name || ""}(${x.tag})${x.alarm ? " · 알람" : ""}`);
+    if (sp.length + down.length > 18) 줄(`… 더 있음(정보 칸은 18개까지 — 관제 화면 팝업에 전부)`);
+    if ((r.cameras || []).length) 줄("같은 위치 카메라: " + r.cameras.map(c => c.code).join(", "));
+    if (r.same_rtu) 줄(`같은 RTU 센서 ${r.same_rtu}개 — 통신 문제라면 그 값들도 같이 멈춥니다`);
+    정보자리();
+  }).catch(() => {});
 }
 
 /* ── 시점 옮기기 ────────────────────────────────────────────────────── */
@@ -2991,7 +3215,17 @@ const 시점들 = {
   iso: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(0.16, 0.72)),
   top: () => 날기(가운데(), 맞춤거리(전체반지름()) * 0.97, 방향(0, 1.5)),
   eye: () => 날기(V(랙통로(), 방().d * 0.45, 1.5), 9, 방향(0, 0.09)),
+  /* 629차 — 8방향(타업체 3D 의 정면·뒤쪽·왼쪽·오른쪽·네 모서리 상단). 앞 = 평면 아래쪽(+Y). 옆은 낮게, 모서리는 위에서 */
+  f: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(0, 0.32)),
+  b: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(Math.PI, 0.32)),
+  l: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(-Math.PI / 2, 0.32)),
+  r: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(Math.PI / 2, 0.32)),
+  fl: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(-Math.PI / 4, 0.78)),
+  fr: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(Math.PI / 4, 0.78)),
+  bl: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(-Math.PI * 3 / 4, 0.78)),
+  br: () => 날기(가운데(), 맞춤거리(전체반지름()), 방향(Math.PI * 3 / 4, 0.78)),
 };
+for (const b of document.querySelectorAll("#vgrid button")) b.onclick = () => 시점들[b.dataset.v]();
 function 랙통로() {
   const 열 = [...열목록().values()].sort((p, q) => p.x0 - q.x0);
   let 최대 = 0, 자리 = 방().w / 2;
@@ -3022,12 +3256,16 @@ cv.addEventListener("pointerdown", e => {
   비행 = null;
   누름 = {x: e.clientX, y: e.clientY, 버튼: e.button};
   cv.classList.add("drag");
+  알람흐림(true);                                   // 594차 — 끌어 돌리는 동안 알람 창이 3D 를 가리지 않게
 });
 addEventListener("pointerup", e => {
+  알람흐림(false);
   if (편집중) return;
   cv.classList.remove("drag");
   if (!누름 || e.target !== cv) { 누름 = null; return; }
   if (누름.버튼 === 0 && Math.hypot(e.clientX - 누름.x, e.clientY - 누름.y) < 5) {
+    const 단 = 라이브.켬 && 묶음단추찾기(e);             // 597차 — 「+N」 묶음 단추
+    if (단) { 묶음누르기(단.키); 누름 = null; return; }
     const it = 집기3D(화면좌표(e));
     고르기(it ? [it.id] : []); 정보();
     // CCTV 카메라를 누르면 관제 화면이 그 카메라 영상 창을 연다 (164차)
@@ -3036,7 +3274,7 @@ addEventListener("pointerup", e => {
   }
   누름 = null;
 });
-cv.addEventListener("pointermove", e => { if (!편집중 && !누름) 볼점 = 화면좌표(e); });
+cv.addEventListener("pointermove", e => { if (!편집중 && !누름) { 볼점 = 화면좌표(e); cv.classList.toggle("묶음위", !!(라이브.켬 && 묶음단추찾기(e))); } });
 cv.addEventListener("pointerleave", () => { 볼점 = null; if (위에 && !편집중) { 위에 = null; 칠하기(); } });
 cv.addEventListener("dblclick", e => {
   if (편집중) return;
@@ -4973,6 +5211,7 @@ if (FMS켬) { $("source").textContent = "FMS 에 연결하는 중…"; 토큰받
 /* 시험용 손잡이 */
 window.__room3d = {덮어쓰기: (o) => { 라이브.덮어쓰기 = o || {}; },
   표보임: () => [...라이브.표].filter(([, s]) => s.visible).map(([id]) => id), 표수: () => 라이브.표.size,
+  묶음: () => 표묶음.단추.map(d => ({...d})), 묶음누르기: (키) => 묶음누르기(키),
   표글: (id) => { const s = 라이브.표.get(id); return s ? s.userData.줄 : null; },
   재질정보: (id) => { const m = 매시들.get(id), it = 찾기id.get(id); if (!m || !it) return null;
     const 판 = Array.isArray(m.material) ? m.material : null;
@@ -4991,7 +5230,10 @@ window.__room3d = {덮어쓰기: (o) => { 라이브.덮어쓰기 = o || {}; },
     값: Object.fromEntries([...라이브.값].map(([k, v]) => [k, {단계: v.단계, 글: 값글(k)}]))}), FMS로가기, 현장열기,
   라이브: () => ({켬: 라이브.켬, 센서: 라이브.센서.length, 알람: 라이브.알람.map(a => [a.id, a.v.단계]), 랙색: [...라이브.랙상태], 랙온도: [...라이브.랙온도],
     재생: 재생.켬 ? {i: 재생.i, 수: 재생.시각들.length, 시각: 재생.시각들[재생.i]} : null}), 라이브켜기, 알람으로, 재생열기, 재생보기, 재생닫기,
-  camera, controls, 고른: () => [...고른], 모형: () => 모형, 시점들, 날기, 나는중: () => !!비행, 모드, 편집보기바꾸기, 평면,
+  camera, controls, 고른: () => [...고른], 모형: () => 모형, 시점들, 날기,
+  랙공간: () => [...라이브.랙공간.keys()], 요약: () => $("sumBox").hidden ? null : $("sumBox").innerText,      // 629차 시험 손잡이
+  공간칠: (id) => { const m = 라이브재질(찾기id.get(id)); return m ? Object.keys(공간재질).find(k => 공간재질[k] === m) || "기타" : null; },
+  골라보기: (ids) => { 고르기(ids); 정보(); }, 나는중: () => !!비행, 모드, 편집보기바꾸기, 평면,
   평면에서화면, 내역: () => 내역.목록.map(h => h.이름), 저장됨: () => 저장됨,
   표화면: (id) => { const s = 센서표.get(id); const p = s.position.clone().project(지금카메라());
     const r = stage.getBoundingClientRect(); return {x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height}; },
@@ -5027,7 +5269,7 @@ window.__room3d = {덮어쓰기: (o) => { 라이브.덮어쓰기 = o || {}; },
     const b = new THREE.Box3().setFromObject(c), z = b.getSize(new THREE.Vector3()); let n = 0; c.traverse(o => { if (o.isMesh) n++; });
     return {매시: n, 크기: [z.x, z.z, z.y].map(v => +v.toFixed(3))}; },
   모델다시읽기: () => 모델들읽기(), 모델창,
-  모델허용, 가까이: (id) => { 고르기([id]); 가까이([id]); }, 고르기: (ids) => 고르기(ids),
+  모델허용, 가까이: (id) => { 고르기([id]); 가까이([id]); }, 고르기: (ids) => 고르기(ids), 정보보기: (id) => { 고르기([id]); 정보(); },
   이름판: (id) => { const m = 매시들.get(id), c = m && m.userData.이름판; return c ? c.userData.글 : null; }};
 </script>
 </body>
